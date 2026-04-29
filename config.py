@@ -1,0 +1,40 @@
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+DATA_RAW = ROOT / "data" / "raw"
+DATA_PROCESSED = ROOT / "data" / "processed"
+PLOTS_DIR = ROOT / "plots"
+
+CRSP_PATH = DATA_RAW / "daily_crsp.csv"
+COMPUSTAT_PATH = DATA_RAW / "Compustat_quarterly.csv"
+FUTURES_PATH = DATA_RAW / "daily_futures.csv"
+JKP_PATH = DATA_RAW / "JKP_factors_US_monthly.csv"
+CZ_PATH = DATA_RAW / "Chen_Zimmerman_monthly.csv"
+
+# Project date window (overlap of CRSP and futures with sufficient coverage)
+START_DATE = "2000-01-01"
+END_DATE = "2020-11-30"
+
+# ── Feature windows ───────────────────────────────────────────────────────────
+
+# Momentum: lookback windows in trading days
+# Each window computes cumulative log return over [t-w-1, t-2]
+# (skip most recent day per Jegadeesh-Titman to avoid microstructure noise)
+MOMENTUM_WINDOWS = [5, 21, 63, 126, 252]   # 1w, 1m, 3m, 6m, 12m
+
+# Short-term reversal: previous day return (kept separate from momentum)
+REVERSAL_LAG = 1
+
+# Volatility: windows for realized std of daily returns
+VOLATILITY_WINDOWS = [21, 63, 252]          # 1m, 3m, 12m
+
+# Futures: how many lags of futures log returns to include as macro features
+FUTURES_LAGS = [1, 2, 3, 5]               # t-1 through t-5
+
+# Minimum number of non-null observations for a futures instrument to be kept
+FUTURES_MIN_HISTORY_YEARS = 5.0
+
+# Train / validation / test split dates
+TRAIN_END = "2015-12-31"
+VAL_END = "2018-12-31"
+# test: 2019-01-01 → END_DATE
