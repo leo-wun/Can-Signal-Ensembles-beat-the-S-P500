@@ -2,3 +2,7 @@ numpy
 pandas
 matplotlib
 torch
+polars
+pyarrow
+wrds
+lightgbm

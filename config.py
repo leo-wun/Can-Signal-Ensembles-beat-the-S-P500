@@ -11,6 +11,9 @@ FUTURES_PATH = DATA_RAW / "daily_futures.csv"
 JKP_PATH = DATA_RAW / "JKP_factors_US_monthly.csv"
 CZ_PATH = DATA_RAW / "Chen_Zimmerman_monthly.csv"
 
+CRSP_PATH_CLEAN = DATA_PROCESSED / "daily_crsp.parquet"
+FEATURES_PATH_CLEAN = DATA_PROCESSED / "features.parquet"
+
 # Project date window (overlap of CRSP and futures with sufficient coverage)
 START_DATE = "2000-01-01"
 END_DATE = "2020-11-30"
@@ -38,3 +41,11 @@ FUTURES_MIN_HISTORY_YEARS = 5.0
 TRAIN_END = "2015-12-31"
 VAL_END = "2018-12-31"
 # test: 2019-01-01 → END_DATE
+
+
+
+# ── Global Variables ───────────────────────────────────────────────────────────
+
+VALUE_RETURN = 'ret'
+BATCH_SIZE = 500
+BATCH_NUMBER = 5

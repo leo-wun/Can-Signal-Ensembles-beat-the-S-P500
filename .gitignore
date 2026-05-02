@@ -1,0 +1,10 @@
+*.lock
+*.toml
+*.csv
+*.parquet
+*.venv
+
+data/
+
+
+

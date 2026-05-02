@@ -21,51 +21,175 @@ import config
 
 # ── Stock-level features ──────────────────────────────────────────────────────
 
-def add_momentum(df: pd.DataFrame, windows=None) -> pd.DataFrame:
+def add_momentum(df: pd.DataFrame, value_col : str,  windows = None, min_period : float = 0.8, reversal : bool = True) -> pd.DataFrame:
     """
-    Cumulative log return over each window, shifted by 2 days (skip t-1).
+    Cumulative log return over each window (keep day t).
 
+    Input ->
+
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    windows : lookback window
+    min_period : degree of completion on the lookback window for a value to be computed (otherwise -> NaN)
+    reversal : Wether or not we want to consider last day return as reversal feature or not
+
+    Output ->
+
+    Dataframe with following columns added
     Column names: mom_5d, mom_21d, …
+
     """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
     windows = windows or config.MOMENTUM_WINDOWS
     df = df.copy().sort_values(["PERMNO", "date"])
-    log_ret = np.log1p(df["ret"])
+    log_ret = np.log1p(df[value_col])
+
     # Attach as a named series so groupby can reference it
     df["_log_ret"] = log_ret
 
+    # Set closed parameters
+    closed = 'both' # closed = both set interval as [start, end]
+    if reversal:
+        closed = 'left' # closed = left set interval as [start, end)
+
     for w in windows:
         df[f"mom_{w}d"] = df.groupby("PERMNO")["_log_ret"].transform(
-            lambda x: x.shift(2).rolling(w, min_periods=w // 2).sum()
+            lambda x: x.rolling(w, min_periods= int(w * min_period), closed=closed).sum() 
         )
+
     df.drop(columns=["_log_ret"], inplace=True)
+
     return df
 
+def add_volatility_momentum(df: pd.DataFrame, value_col : str,  windows = None, min_period : float = 0.8, reversal : bool = True) -> pd.DataFrame:
+    """
+    Cumulative log return over each window, shifted by 2 days (keep day t).
 
-def add_reversal(df: pd.DataFrame) -> pd.DataFrame:
-    """Previous-day log return (short-term reversal signal)."""
+    Input ->
+
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    windows : lookback window
+    min_period : degree of completion on the lookback window for a value to be computed (otherwise -> NaN)
+    reversal : Wether or not we want to consider last day return as reversal feature or not
+
+    Output ->
+
+    Dataframe with following columns added
+    Column names: mom_5d, mom_21d, …
+
+    """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
+    windows = windows or config.MOMENTUM_WINDOWS
+
     df = df.copy().sort_values(["PERMNO", "date"])
-    df["_log_ret"] = np.log1p(df["ret"])
-    df["reversal_1d"] = df.groupby("PERMNO")["_log_ret"].transform(lambda x: x.shift(1))
+    log_ret = np.log1p(df[value_col])
+
+    # Attach as a named series so groupby can reference it
+    df["_log_ret"] = log_ret
+
+    # Set closed parameters
+    closed = 'left' if reversal else 'both' # closed = left set interval as [start, end) ; closed = both set interval as [start, end]
+
+    for w in windows:
+        min_p = int(w * min_period)
+        
+        # Calculate sum and std separately to avoid calculating rolling windows twice in a lambda
+        roll_sum = df.groupby("PERMNO")["_log_ret"].transform(
+            lambda x: x.rolling(w, min_periods=min_p, closed=closed).sum()
+        )
+        roll_std = df.groupby("PERMNO")["_log_ret"].transform(
+            lambda x: x.rolling(w, min_periods=min_p, closed=closed).std()
+        )
+        
+        # Scale and annualize
+        df[f"mom_scaled_{w}d"] = (roll_sum / (roll_std * np.sqrt(252)))
+        df[f"mom_{w}d"] = roll_sum 
+        df[f'vol_{w}d'] = roll_std * np.sqrt(252)
+
     df.drop(columns=["_log_ret"], inplace=True)
+
     return df
+ 
 
 
-def add_volatility(df: pd.DataFrame, windows=None) -> pd.DataFrame:
+def add_volatility(df: pd.DataFrame, value_col : str, windows = None, min_period = 0.8) -> pd.DataFrame:
     """
     Rolling realized volatility (annualised std of daily log returns).
 
-    Uses returns up to and including t-1 (no look-ahead).
+    Uses returns up to and including t (we are aware of day t ).
     Column names: vol_21d, vol_63d, vol_252d
+
+    Input ->
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    min_period : Fraction of lookback windows necessary for computation (otherwise NaN)
+
+    Output ->
+
+    Dataframe with volatility column added
+
     """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
     windows = windows or config.VOLATILITY_WINDOWS
+
     df = df.copy().sort_values(["PERMNO", "date"])
-    df["_log_ret"] = np.log1p(df["ret"])
+    df["_log_ret"] = np.log1p(df[value_col])
 
     for w in windows:
         df[f"vol_{w}d"] = df.groupby("PERMNO")["_log_ret"].transform(
-            lambda x: x.shift(1).rolling(w, min_periods=w // 2).std() * np.sqrt(252)
+            lambda x: x.rolling(w, min_periods=int(w * min_period), closed='both').std() * np.sqrt(252)
         )
+
     df.drop(columns=["_log_ret"], inplace=True)
+
+    return df
+
+
+def add_reversal(df: pd.DataFrame, value_col : str = None, reversal : bool = True) -> pd.DataFrame:
+
+    """
+    Previous-day log return (short-term reversal signal).
+    
+    Input ->
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    reversal : Wether or not we want to consider last day return as reversal feature or not
+
+    Output -> 
+    
+    Dataframe with reversal column added
+    
+    """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
+    if not reversal:
+        print('1 day reversal is not considered. Change reversal to True if you want it to be considered.')
+        return
+
+    df = df.copy().sort_values(["PERMNO", "date"])
+
+    df["_log_ret"] = np.log1p(df[value_col])
+
+    df["reversal_1d"] = df.groupby("PERMNO")["_log_ret"].transform(lambda x: x.shift(1))
+
+    df.drop(columns=["_log_ret"], inplace=True)
+
     return df
 
 
@@ -76,12 +200,16 @@ def add_mktcap_zscore(df: pd.DataFrame) -> pd.DataFrame:
     Requires `log_mktcap` produced by preprocessing.clean_crsp (needs DlyPrc
     and ShrOut in the raw CRSP file — download these from WRDS if missing).
     """
+
+
     if "log_mktcap" not in df.columns:
         return df
+    
     df = df.copy()
     df["size"] = df.groupby("date")["log_mktcap"].transform(
         lambda x: (x - x.mean()) / (x.std() + 1e-8)
     )
+
     return df
 
 
@@ -112,10 +240,32 @@ def add_futures_features(stock_df: pd.DataFrame, futures_df: pd.DataFrame,
 
 # ── Target ────────────────────────────────────────────────────────────────────
 
-def add_target(df: pd.DataFrame) -> pd.DataFrame:
-    """Next-day return as the prediction target (NaN for the last row per stock)."""
+def add_target(df: pd.DataFrame, value_col : str, trading_interval : bool = True) -> pd.DataFrame:
+
+    """
+    Next-day return as the prediction target (NaN for the last row per stock).
+    
+    Input -> 
+
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    trading_interval : Wether we are forecasting t + 1 or t + 2. If true, we consider that data until time t (included) will be used on t + 1
+    
+    Output ->
+
+    Dataframe with Target column appended
+
+    """
+
+    shift = -2
+    if not  trading_interval:
+        shift = -1
+
     df = df.copy().sort_values(["PERMNO", "date"])
-    df["target"] = df.groupby("PERMNO")["ret"].shift(-1)
+
+    df["target"] = df.groupby("PERMNO")[value_col].shift(shift)
+
+
     return df
 
 
@@ -135,46 +285,66 @@ def crosssectional_rank(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
         )
     return df
 
-
-# ── Master builder ────────────────────────────────────────────────────────────
-
-def build_features(crsp: pd.DataFrame, futures: pd.DataFrame,
-                   rank_normalize: bool = True) -> pd.DataFrame:
-    """
-    Assemble the full feature matrix for the neural net.
-
-    Args:
-        crsp:           Cleaned CRSP DataFrame (output of preprocessing.clean_crsp).
-        futures:        Cleaned futures returns DataFrame (preprocessing.clean_futures).
-        rank_normalize: Apply cross-sectional rank normalization to stock-level features.
-
-    Returns:
-        Panel DataFrame: one row per (PERMNO, date) with all features + `target`.
-        Rows with NaN in features are kept — handle masking in the model pipeline.
-    """
-    df = crsp.copy()
-    df = add_momentum(df)
-    df = add_reversal(df)
-    df = add_volatility(df)
-    df = add_mktcap_zscore(df)
-    df = add_target(df)
-    df = add_futures_features(df, futures)
-
-    if rank_normalize:
-        mom_cols  = [f"mom_{w}d"  for w in config.MOMENTUM_WINDOWS  if f"mom_{w}d"  in df.columns]
-        vol_cols  = [f"vol_{w}d"  for w in config.VOLATILITY_WINDOWS if f"vol_{w}d" in df.columns]
-        size_col  = ["size"] if "size" in df.columns else []
-        to_rank   = mom_cols + vol_cols + ["reversal_1d"] + size_col
-        df = crosssectional_rank(df, [c for c in to_rank if c in df.columns])
-
-    return df
-
+# ── Gather list of features columns ─────────────────────────────────────────────
 
 def get_feature_cols(df: pd.DataFrame) -> list:
-    """Return all feature column names (excludes identifiers, raw return, and target)."""
+
+    """
+    Return all feature column names (excludes identifiers, raw return, and target).
+
+    Input -> 
+    df:     Pandas dataframe
+
+    Output ->
+    features_cols:      List of all features in df
+
+    """
     non_feature = {
         "PERMNO", "HdrCUSIP", "CUSIP", "Ticker", "TradingSymbol",
         "PERMCO", "SICCD", "NAICS", "date", "ret", "mkt_ret",
         "DlyPrc", "ShrOut", "mktcap", "log_mktcap", "target",
     }
     return [c for c in df.columns if c not in non_feature]
+
+
+
+# ── Master builder ────────────────────────────────────────────────────────────
+
+def build_features(crsp: pd.DataFrame,
+                   value_col : str,
+                   rank_normalize: bool = True,
+                   trading_interval : bool = True,
+                   reversal : bool = True,
+                   ) -> pd.DataFrame:
+    """
+    Assemble the full feature matrix for the neural net.
+
+    Args:
+        crsp:           Cleaned CRSP DataFrame (output of preprocessing.clean_crsp).
+        futures:        Cleaned futures returns DataFrame (preprocessing.clean_futures).
+        value_col:      Name of the column with returns
+        rank_normalize: Apply cross-sectional rank normalization to stock-level features.
+        trading_interval: Wether or not we consider an interval day between data (time t) and buying in the market (time t + 1)
+        reversal:       Wether or not we consider the day before in momentum formula and if we add the reversal feature
+
+    Returns:
+        Panel DataFrame: one row per (PERMNO, date) with all features + `target`.
+        Rows with NaN in features are kept — handle masking in the model pipeline.
+    """
+    df = crsp.copy()
+    df = add_reversal(df=df, value_col=value_col, reversal=reversal)
+    df = add_volatility_momentum(df=df, value_col=value_col, reversal=reversal)
+    #df = add_mktcap_zscore(df)
+    df = add_target(df=df, value_col=value_col, trading_interval=trading_interval)
+    #df = add_futures_features(df, futures)
+
+    df = df.dropna()
+
+    FEATURES_COLUMNS = get_feature_cols(df)
+
+    if rank_normalize:
+        df = crosssectional_rank(df, FEATURES_COLUMNS)
+
+    return df
+
+
