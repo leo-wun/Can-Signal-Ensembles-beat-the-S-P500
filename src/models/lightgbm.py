@@ -4,7 +4,7 @@ import numpy as np
 import sys
 import lightgbm as lgb
 from pathlib import Path
-from sklearn.metrics import mean_squared_error
+
 
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

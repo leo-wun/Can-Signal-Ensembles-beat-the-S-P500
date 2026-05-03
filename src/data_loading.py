@@ -23,13 +23,16 @@ def load_crsp(path=None) -> pd.DataFrame:
     df.sort_values(["PERMNO", "date"], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
+    start_date = df['date'].min()
+    end_date = df['date'].max()
+
     db = wrds.Connection()
     # Fetch price and shares data for market cap calculations.
     permno_list = ",".join(str(int(p)) for p in df["PERMNO"].dropna().unique())
     query = f"""
     SELECT permno, date, prc AS dlyprc, shrout
     FROM crsp.dsf
-    WHERE date BETWEEN '{config.START_DATE}' AND '{config.END_DATE}'
+    WHERE date BETWEEN '{start_date}' AND '{end_date}'
       AND permno IN ({permno_list})
     """
     wrds_df = db.raw_sql(query, date_cols=["date"])
@@ -70,7 +73,7 @@ def load_crsp_polars(path=None):
     return df
 
 
-def wrds_fetch(permno_list):
+def wrds_fetch(permno_list, start_date, end_date):
 
     # WRDS FETCH
     print('/!| PLEASE FILL CREDENTIALS /!|')
@@ -81,7 +84,7 @@ def wrds_fetch(permno_list):
     query = f"""
     SELECT permno, date, prc AS dlyprc, shrout
     FROM crsp.dsf
-    WHERE date BETWEEN '{config.START_DATE}' AND '{config.END_DATE}'
+    WHERE date BETWEEN '{start_date}' AND '{end_date}'
     AND permno IN ({permno_list_sql})
     """
     wrds_df = db.raw_sql(query, date_cols=["date"])
@@ -102,4 +105,86 @@ def load_futures(path=None) -> pd.DataFrame:
     df.sort_values("date", inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
+
+
+
+def load_cz_monthly(path : str = None,
+                    date_col : str = 'date',
+                    completion_factor : float = 0.9,
+                    corr_coef : float = 0.95
+)-> pd.DataFrame:
+    """
+    Load and preprocess the Chen-Zimmerman dataset. Include a fill forward to daily frequency to match daily returns
+
+    Input ->
+
+    date_col:               Name of the date column in the dataset
+    completion_factor:      Factor of completion of a column required (otherwise column is dropped)
+    corr_coef:              Coefficient of correlation above which we drop one of the two columns (Not bringing information)
+    
+    Output ->
+
+    df:                     Dataframe of the normalized, daily frequency data
+    
+    
+    """
+
+    PATH = path or config.CZ_PATH
+
+    df_cz = pd.read_csv(PATH, parse_dates=[date_col])
+    N, c = df_cz.shape
+
+    print(f'Initial Size of the dataset: {N, c}')
+
+    max_date = df_cz['date'].max()
+    min_date = df_cz['date'].min()
+    print(f'Total Date range : {min_date} -> {max_date}')
+
+
+    # 1. Get rid of columns with too many NaN
+
+    thresh = completion_factor * df_cz.shape[0]
+    df_cz = df_cz.dropna(thresh=thresh, axis=1)
+    print(f'Dataset shape after dropping column with less than {completion_factor * 100}% completion: {df_cz.shape}')
+    print(f'Total column dropped so far : {c - df_cz.shape[1]}')
+
+
+    # 2. Study intercolumn correlation (remove column with too high absolute correlation)
+
+    # Create correlation matrix
+    corr_matrix = df_cz.corr().abs()
+
+    # Select upper triangle of correlation matrix
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+
+    # Find features with correlation greater than corr_coef
+    to_drop = [column for column in upper.columns if any(upper[column] > corr_coef)]
+
+    # Drop features 
+    df_cz.drop(to_drop, axis=1, inplace=True)
+
+    print(f'Dataset shape after dropping highly correlated (corr_coef > {corr_coef}) columns: {df_cz.shape}')
+    print(f'Total column dropped so far : {c - df_cz.shape[1]}')
+
+    # 3. Expansion en daily avec forward fill
+    df_cz = df_cz.set_index('date').sort_index()
+
+    daily_index = pd.date_range(
+        start=df_cz.index.min(),
+        end=df_cz.index.max() + pd.offsets.MonthEnd(1),  # étendre jusqu'à fin du dernier mois
+        freq='D'
+    )
+
+    df_cz_daily = df_cz.reindex(daily_index).ffill()
+    df_cz_daily.index.name = 'date'
+    df_cz_daily = df_cz_daily.reset_index()
+    df_cz_daily = df_cz_daily.dropna(axis=0)
+    
+
+    # 5. Scale % to decimal
+    num_cols = df_cz_daily.select_dtypes('number').columns
+    df_cz_daily[num_cols] = df_cz_daily[num_cols] / 100
+
+
+    return df_cz_daily
 

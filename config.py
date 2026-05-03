@@ -13,6 +13,7 @@ CZ_PATH = DATA_RAW / "Chen_Zimmerman_monthly.csv"
 
 CRSP_PATH_CLEAN = DATA_PROCESSED / "daily_crsp.parquet"
 FEATURES_PATH_CLEAN = DATA_PROCESSED / "features.parquet"
+CZ_PATH_CLEAN = DATA_PROCESSED / "Chen_Zimmerman_monthly.parquet"
 
 # Project date window (overlap of CRSP and futures with sufficient coverage)
 START_DATE = "2000-01-01"
@@ -46,6 +47,14 @@ VAL_END = "2018-12-31"
 
 # ── Global Variables ───────────────────────────────────────────────────────────
 
+# Column Name containing daily return
 VALUE_RETURN = 'ret'
+
+# Number of stock within one random sampled batch
 BATCH_SIZE = 500
+
+# Total number of batch sampled
 BATCH_NUMBER = 5
+
+# Lookback period for normalization for the Chen-Zimmerman dataset (in month)
+CZ_LOOKBACK = 12

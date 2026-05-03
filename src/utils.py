@@ -8,6 +8,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 
 
+
+# ── Fonction to reduce the RAM impact of dataframe ──────────────────────────────────────────────────────
+
+def shrink(df : pd.DataFrame) -> pd.DataFrame:
+
+    for col in df.select_dtypes('float64').columns:
+        df[col] = df[col].astype('float32')
+
+    for col in df.select_dtypes('int64').columns:
+        df[col] = df[col].astype('int32')
+
+    if 'PERMNO' in df.columns:
+        df['PERMNO'] = df['PERMNO'].astype('int32')
+
+    if 'date' in df.columns:
+        df['date'] = df['date'].astype('datetime64[ms]')
+
+
+    return df
+
+
 def generate_batches(df : pd.DataFrame, sample_col : str, batch_number : int, batch_size : int, overlap : bool = True) -> dict:
     """
     Generate a dictionnary of batches sampled on the the dataframe provided.
@@ -48,13 +69,97 @@ def generate_batches(df : pd.DataFrame, sample_col : str, batch_number : int, ba
 
     return batch_dict
 
+
+def generate_date_split(
+        df : pd.DataFrame,
+        date_col : str = 'date',
+        train_split : float = 0.7,
+        val_split : float = 0.15
+) -> dict:
+
+    """
+    Creates a chronological train/val/test date split for a time-indexed dataframe.
+
+    The split is performed on UNIQUE sorted dates to avoid leakage: all rows
+    sharing the same date go to the same split. This matters for panel data
+    where many PERMNO share the same date.
+
+    Input ->
+
+    df:             Dataframe containing at least a date_col columns or has date as index
+    date_col:       Name of the column containing the dates
+    train_split:    Fraction of the total date range used for training
+    val_split:      Fraction of the total date range used for validation 
+
+    
+    Output ->
+
+    dict:          Tuple containing the boundary of each split
+
+
+    """
+
+    # Check fraction input
+    if not (0 < train_split < 1) or not (0 <= val_split < 1):
+        raise ValueError("train_split and val_split must be in (0, 1).")
+    if train_split + val_split >= 1:
+        raise ValueError(
+            f"train_split + val_split must be < 1, got {train_split + val_split}"
+        )
+
+    # Check if column date_col exist
+    if date_col in df.columns:
+        dates = df[date_col]
+    elif isinstance(df.index, pd.MultiIndex) and date_col in df.index.names:
+        dates = df.index.get_level_values(date_col)
+    elif df.index.name == date_col:
+        dates = df.index
+    else:
+        raise KeyError(
+            f"Column or index level '{date_col}' not found. "
+            f"Available columns: {list(df.columns)}, "
+            f"index names: {df.index.names}"
+        )
+
+
+    # Convert to datetime and sort
+    unique_dates = pd.to_datetime(pd.Series(dates).unique())
+    unique_dates = pd.Series(unique_dates).sort_values().reset_index(drop=True)
+
+    n = len(unique_dates)
+    if n < 3:
+        raise ValueError(f"Need at least 3 unique dates to split, got {n}.")
+
+    # --- Calcul des indices de coupure ---
+    train_end_idx = int(np.floor(n * train_split))
+    val_end_idx = int(np.floor(n * (train_split + val_split)))
+
+    # Garde-fous : chaque split doit avoir au moins une date
+    train_end_idx = max(train_end_idx, 1)
+    val_end_idx = max(val_end_idx, train_end_idx + 1)
+    val_end_idx = min(val_end_idx, n - 1)
+
+    splits = {
+        'train': (unique_dates.iloc[0], unique_dates.iloc[train_end_idx - 1]),
+        'val':   (unique_dates.iloc[train_end_idx], unique_dates.iloc[val_end_idx - 1]),
+        'test':  (unique_dates.iloc[val_end_idx], unique_dates.iloc[-1]),
+    }
+
+    # Summary
+    print(f"Total unique dates: {n}")
+    for name, (start, end) in splits.items():
+        n_dates = ((unique_dates >= start) & (unique_dates <= end)).sum()
+        print(f"  {name:5s}: {start.date()} → {end.date()}  ({n_dates} dates, {n_dates/n:.1%})")
+
+    return splits
+
+
 def train_val_test_split(
         df : pd.DataFrame,
         date_col : str,
-        START_DATE = config.START_DATE,
-        END_DATE = config.END_DATE,
-        TRAIN_END = config.TRAIN_END,
-        VAL_END = config.VAL_END
+        df_to_join : list[pd.DataFrame] = None,
+        train_split : float = 0.70,
+        val_split : float = 0.15
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     
     """
@@ -62,35 +167,57 @@ def train_val_test_split(
 
     Input ->
 
-    df:         Dataframe containing at least date_col
-    date_col:   Name of the column containing the dates on which we do the split
+    df:             Dataframe containing at least date_col
+    date_col:       Name of the column/index containing the dates on which we do the split
+    train_split:    Fraction of the total date range used for training
+    val_split:      Fraction of the total date range used for validation 
+    df_to_join:     Optional parameter containing dataframe we would like to join/merge with the baseline one
     
     Returns:
-        tuple: (train_df, val_df, test_df)
+        tuple:      (train_df, val_df, test_df)
     """
+
+
+    # Generate date split
+
+    date_split = generate_date_split(df = df, date_col = date_col, train_split=train_split, val_split=val_split)
+
+    TRAIN_START = date_split['train'][0]
+    TRAIN_END = date_split['train'][1]
+    VAL_START = date_split['val'][0]
+    VAL_END = date_split['val'][1]
+    TEST_START = date_split['test'][0]
+    TEST_END = date_split['test'][1]
 
     df = df.copy().sort_values(date_col)
 
-    train_df = df[df[date_col].between(START_DATE, TRAIN_END, inclusive='left')] # Inclusice left acts as [START_DATE : END_DATE)
-    val_df   = df[df[date_col].between(TRAIN_END, VAL_END, inclusive='left')]
-    test_df  = df[df[date_col].between(VAL_END, END_DATE, inclusive='both')] # Inclusice both acts as [START_DATE : END_DATE]
+    train_df = df[df[date_col].between(TRAIN_START, TRAIN_END, inclusive='left')] # Inclusice left acts as [START_DATE : END_DATE)
+    val_df   = df[df[date_col].between(VAL_START, VAL_END, inclusive='left')]
+    test_df  = df[df[date_col].between(TEST_START, TEST_END, inclusive='both')] # Inclusice both acts as [START_DATE : END_DATE]
 
     train_df = train_df.set_index([date_col, 'PERMNO'])
     val_df = val_df.set_index([date_col, 'PERMNO'])
     test_df = test_df.set_index([date_col, 'PERMNO'])
 
-    return (train_df, val_df, test_df)
+    if df_to_join is not None:
+        for elem in df_to_join:
+            train_df = train_df.join(elem, on=date_col, how='left')
+            val_df = val_df.join(elem, on=date_col, how='left')
+            test_df = test_df.join(elem, on=date_col, how='left')
 
+
+    return (train_df, val_df, test_df)
 
 
 # ── Pipeline from .parquet to train/validation/test split batches ──────────────────────────────────────────────────────
 
 
 def split_batch(df : pd.DataFrame,
-                sample_col : str, 
-                date_col : str,
-                batch_number : int,
-                batch_size : int,
+                sample_col : str = 'PERMNO', 
+                date_col : str = 'date',
+                df_to_join : list[pd.DataFrame] = None,
+                batch_number : int = 5,
+                batch_size : int = 500,
                 overlap : bool = True
 ) -> dict:
     """
@@ -107,6 +234,8 @@ def split_batch(df : pd.DataFrame,
     batch_number:   Number of batch to create
     batch_size:     Number of unique element from sample_col contained in one batch  
     overlap:        Wether or not one element from sample_col can be found in multiple batch
+    df_to_join:     Optional parameter containing dataframe we would like to join/merge with the baseline one
+
 
     Output ->
 
@@ -120,7 +249,7 @@ def split_batch(df : pd.DataFrame,
 
     for batch_name, batch_df in batch_dict.items():
         # Call the split function
-        train_df, val_df, test_df = train_val_test_split(batch_df, date_col)
+        train_df, val_df, test_df = train_val_test_split(batch_df, date_col, df_to_join=df_to_join)
 
         # Store the tuple
         split_batch_dict[batch_name] = {

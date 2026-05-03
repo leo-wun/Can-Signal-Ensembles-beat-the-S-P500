@@ -58,3 +58,4 @@ def clean_futures(df: pd.DataFrame, min_history_years: float = 5.0) -> pd.DataFr
     print(f"Futures: kept {len(kept)}/{len(price_cols)} instruments "
           f"(≥{min_history_years}y of data in {config.START_DATE}–{config.END_DATE})")
     return ret_df.reset_index(drop=True)
+
