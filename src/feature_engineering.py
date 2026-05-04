@@ -11,6 +11,7 @@ Pipeline:
 """
 
 import pandas as pd
+import polars as pl
 import numpy as np
 import sys
 from pathlib import Path
@@ -347,4 +348,121 @@ def build_features(crsp: pd.DataFrame,
 
     return df
 
+
+
+
+
+# ── Features engineering using polars ────────────────────────────────────────────────────────────
+
+
+def pl_add_reversal(df: pl.DataFrame, value_col : str = 'ret', date_col : str = 'date', reversal : bool = True) -> pl.DataFrame:
+
+    """
+    Previous-day log return (short-term reversal signal).
+    
+    Input ->
+
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    reversal : Wether or not we want to consider last day return as reversal feature or not
+
+    Output -> 
+    
+    Dataframe with reversal column added
+    
+    """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
+    if not reversal:
+        print('1 day reversal is not considered. Change reversal to True if you want it to be considered.')
+        return
+
+    df = df.sort(['PERMNO', date_col]).with_columns([
+        pl.col(value_col)
+            .log1p()
+            .shift(1)
+            .over('PERMNO')
+            .alias('reversal_1d')
+    ])
+
+    return df
+
+
+
+
+
+def polars_features(
+        df: pl.DataFrame,
+        value_col : str = 'ret',
+        date_col : str = 'date',
+        reversal : bool = True
+) -> pl.DataFrame:
+
+    """
+    Previous-day log return (short-term reversal signal).
+    
+    Input ->
+
+    df : Initial dataframe with at least a return column
+    value_col : Name of df column corresponding to return
+    reversal : Wether or not we want to consider last day return as reversal feature or not
+
+    Output -> 
+    
+    Dataframe with reversal column added
+    
+    """
+
+    if not value_col:
+        print('No parameter passed for value_col')
+        return 
+
+    shift_days = 0
+    if reversal:
+        shift_days = 7
+    
+
+    # Structure for momentum features
+    momentum_exprs = [
+    (
+        pl.col("return")
+        .log1p()
+        .rolling_sum(window)
+        .exp() 
+        - 1
+    )
+    .shift(shift_days)
+    .over("PERMNO")
+    .alias(f"mom_{window}d") 
+    for window in config.MOMENTUM_WINDOWS
+]
+
+
+
+    df = df.sort(['PERMNO', date_col]).with_columns([
+        
+        # Reversal feature
+        
+        pl.col(value_col)
+            .log1p()
+            .shift(1)
+            .over('PERMNO')
+            .alias('reversal_1d'),
+
+        # Momentum features
+
+        momentum_exprs,
+
+
+        # Volatility features
+
+
+
+
+    ])
+
+    return df
 

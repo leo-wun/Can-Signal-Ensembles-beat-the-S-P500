@@ -5,6 +5,8 @@ from pathlib import Path
 import wrds
 import polars as pl
 
+import password
+
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
@@ -33,7 +35,7 @@ def load_crsp(path=None) -> pd.DataFrame:
     SELECT permno, date, prc AS dlyprc, shrout
     FROM crsp.dsf
     WHERE date BETWEEN '{start_date}' AND '{end_date}'
-      AND permno IN ({permno_list})
+      AND permno IN ({permno_list})`
     """
     wrds_df = db.raw_sql(query, date_cols=["date"])
     wrds_df.rename(columns={"permno": "PERMNO", "dlyprc": "DlyPrc", "shrout": "ShrOut"}, inplace=True)
@@ -96,6 +98,104 @@ def wrds_fetch(permno_list, start_date, end_date):
     )
 
     return wrds_df
+
+
+
+def Fama_French_fetch(
+        permno_list : list,
+        start_date,
+        end_date
+) -> pl.DataFrame:
+    
+    """
+    Gather all values necessary to build a FAMA-FRENCH 3 Factors from a PERMNO list
+
+    Input -> 
+
+    permno_list:            List of all PERMNOs for which we want to get values
+    start_date:             Starting date
+    end_date:               Ending date
+
+
+    Output ->
+
+    df:                     Dataframe containing all values by PERMNO    
+    
+    """
+    
+    # WRDS FETCH
+    print('/!| PLEASE FILL CREDENTIALS /!|')
+    db = wrds.Connection(username=password.WRDS_USERNAME, password=password.WRDS_PASSWORD)
+
+    # Transform permno_list to something sql can work with
+
+    permno_list_sql = ",".join(str(int(p)) for p in permno_list)
+
+
+    # Get the risk-free rate (Daily values)
+
+    sql_rf = f"""
+        SELECT date, rf
+        FROM ff.factors_daily
+        WHERE date >= '{start_date}'
+        AND date <= '{end_date}'
+    """
+
+    df_rf = db.raw_sql(sql_rf, date_cols=['date'])
+
+
+    # Get Book-to-Market (Monthly values)
+
+    sql_bm = f"""
+        SELECT permno, public_date as date, bm
+        FROM wrdsapps.firm_ratio
+        WHERE permno IN ({permno_list_sql})
+        AND public_date >= '{start_date}'
+        AND public_date <= '{end_date}'
+    """
+
+    df_bm = db.raw_sql(sql_bm, date_cols=['date'])
+
+    # Get stock returns and market cap (Daily values)
+
+    sql_crsp = f"""
+        SELECT permno, date, ret, prc, shrout
+        FROM crsp.dsf
+        WHERE permno IN ({permno_list_sql})
+        AND date >= '{start_date}'
+        AND date <= '{end_date}'
+    """
+
+    df_crsp = db.raw_sql(sql_crsp, date_cols=['date'])
+
+    db.close()
+
+    print('Fetch complete, merging datasets ...')
+
+    
+    # Convert to polars dataframe
+    pl_rf = pl.from_pandas(df_rf).sort('date')
+    pl_bm = pl.from_pandas(df_bm).sort('date')
+    pl_crsp = pl.from_pandas(df_crsp).sort('date')
+
+    # Merge CRSP and RF on daily 
+    df = pl_crsp.join(pl_rf, on='date', how='left')
+    
+
+    # Merge df and BM using asof to autofill daily data with monthly values 
+    df = df.join_asof(pl_bm, on='date', by='permno', strategy='backward')
+
+
+    # Polars computation
+    df = df.with_columns([
+        (pl.col('prc').abs() * pl.col('shrout')).alias('market_cap'),
+        (pl.col('ret') - pl.col('rf')).alias('excess_return')
+    ])
+
+    df = df.drop(['prc', 'shrout'])
+
+
+    return df
     
 
 def load_futures(path=None) -> pd.DataFrame:
