@@ -10,3 +10,5 @@ data/
 password.py
 
 
+__pycache__/
+*.pyc
