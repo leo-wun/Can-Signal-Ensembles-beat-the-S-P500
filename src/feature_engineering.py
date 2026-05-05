@@ -395,9 +395,10 @@ def pl_add_reversal(df: pl.DataFrame, value_col : str = 'ret', date_col : str = 
 
 
 def polars_features(
-        df: pl.DataFrame,
+        df,
         value_col : str = 'ret',
         date_col : str = 'date',
+        target_col : str = 'ret',
         reversal : bool = True
 ) -> pl.DataFrame:
 
@@ -406,9 +407,10 @@ def polars_features(
     
     Input ->
 
-    df : Initial dataframe with at least a return column
-    value_col : Name of df column corresponding to return
-    reversal : Wether or not we want to consider last day return as reversal feature or not
+    df :            Initial dataframe with at least a return column (can be polars or pandas)
+    value_col :     Name of df column corresponding to return
+    reversal :      Wether or not we want to consider last day return as reversal feature or not
+    target_col:     Column we are regressing/classifying on
 
     Output -> 
     
@@ -416,21 +418,24 @@ def polars_features(
     
     """
 
-    if not value_col:
-        print('No parameter passed for value_col')
-        return 
 
     shift_days = 0
     if reversal:
         shift_days = 7
+        
+    # 1. Check if dataframe provided is polars or pandas. Transform to polars 
+    
+    if isinstance(df, pd.DataFrame):
+        df = pl.from_pandas(df)
+    
     
 
-    # Structure for momentum features
+    # 2. Structure for momentum features
     momentum_exprs = [
     (
-        pl.col("return")
+        pl.col(value_col)
         .log1p()
-        .rolling_sum(window)
+        .rolling_sum(window_size = window)
         .exp() 
         - 1
     )
@@ -438,7 +443,38 @@ def polars_features(
     .over("PERMNO")
     .alias(f"mom_{window}d") 
     for window in config.MOMENTUM_WINDOWS
-]
+    ]
+    
+    # 3. Structure for volatility features
+    
+    vol_exprs = [
+    (
+        pl.col(value_col)
+        .rolling_std(window_size = window)
+    )
+    .shift(shift_days)
+    .over("PERMNO")
+    .alias(f"vol_{window}d") 
+    for window in config.VOLATILITY_WINDOWS
+    ]
+    
+    
+    # 4. Structure for volatility weighted momentum
+    vol_w_mom_exprs = []
+    
+    # Creating a combination of all momentum and volatility windows. We weight momentum by rolling std computed on a similar window.
+    for mom_window in config.MOMENTUM_WINDOWS:
+        expr = (
+            (
+                # Use standard division `/` operator instead of .divide()
+                (pl.col(value_col).log1p().rolling_sum(window_size=mom_window).exp() - 1) 
+                / pl.col(value_col).rolling_std(window_size=mom_window)
+            )
+            .shift(shift_days)
+            .over("PERMNO")
+            .alias(f"vol_w_mom_{mom_window}d_std_{mom_window}d")
+        )
+        vol_w_mom_exprs.append(expr)
 
 
 
@@ -451,15 +487,16 @@ def polars_features(
             .shift(1)
             .over('PERMNO')
             .alias('reversal_1d'),
+            
+        # Target 
+        pl.col(target_col)
+            .alias('target'),
 
-        # Momentum features
+        # Other features
 
-        momentum_exprs,
-
-
-        # Volatility features
-
-
+        *momentum_exprs,
+        *vol_exprs,
+        *vol_w_mom_exprs
 
 
     ])

@@ -6,3 +6,5 @@ polars
 pyarrow
 wrds
 lightgbm
+ipykernel
+seaborn
