@@ -486,7 +486,7 @@ def polars_features(
             .log1p()
             .shift(1)
             .over('PERMNO')
-            .alias('reversal_1d'),
+            .alias('log_reversal_1d'),
             
         # Target 
         pl.col(target_col)

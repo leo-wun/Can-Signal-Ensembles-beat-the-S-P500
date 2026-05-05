@@ -1,5 +1,7 @@
 
 import pandas as pd
+import polars as pl
+import polars.selectors as cs
 import numpy as np
 import sys
 from pathlib import Path
@@ -25,6 +27,33 @@ def shrink(df : pd.DataFrame) -> pd.DataFrame:
     if 'date' in df.columns:
         df['date'] = df['date'].astype('datetime64[ms]')
 
+
+    return df
+
+def shrink_polars(df) -> pl.DataFrame:
+
+    # 1. Convert to Polars if necessary
+    if isinstance(df, pd.DataFrame):
+        df = pl.from_pandas(df)
+        
+    # 2. Downcast generic float and int types globally
+    df = df.with_columns([
+        cs.by_dtype(pl.Float64).cast(pl.Float32),
+        cs.by_dtype(pl.Int64).cast(pl.Int32),
+    ])
+
+    # 3. Handle specific columns safely (only if they exist)
+    specific_casts = []
+    
+    if 'PERMNO' in df.columns:
+        specific_casts.append(pl.col('PERMNO').cast(pl.Int32))
+        
+    if 'date' in df.columns:
+        specific_casts.append(pl.col('date').cast(pl.Datetime('ms')))
+        
+    # Apply specific casts if there are any
+    if specific_casts:
+        df = df.with_columns(specific_casts)
 
     return df
 
