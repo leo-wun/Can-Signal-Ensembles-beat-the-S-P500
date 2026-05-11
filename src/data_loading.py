@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
-import sys
+import sys, os
 from pathlib import Path
 import wrds
 import polars as pl
 
 import password
-
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
@@ -288,3 +287,77 @@ def load_cz_monthly(path : str = None,
 
     return df_cz_daily
 
+
+
+def fetch_VIX(
+    start_date = None,
+    end_date = None,
+    path : str = None
+) -> pd.DataFrame:
+    
+
+    '''
+    Query VIX data on wrds
+    
+    
+    '''
+    
+    # 1. Set destination
+
+    if path == None:
+        path = config.VIX_PATH_RAW
+
+    # 2. Connect to wrds database
+
+    db = wrds.Connection()
+
+    # 3. Construction dynamique de la requête SQL
+    if start_date and end_date:
+        # Si les dates sont spécifiées, on filtre
+        sql_cboe = f"""
+            SELECT date, vix
+            FROM cboe.cboe
+            WHERE date >= '{start_date}'
+            AND date <= '{end_date}'
+        """
+    else:
+        # RANGE MAXIMAL : Si aucune date n'est fournie, on prend tout
+        sql_cboe = """
+            SELECT date, vix
+            FROM cboe.cboe
+        """
+
+    vix_crsp = db.raw_sql(sql_cboe, date_cols=['date'])
+    vix_crsp['date'] = pd.to_datetime(vix_crsp['date'])
+
+    vix_crsp.to_parquet(path, index=False)
+    print(f"Data saved to {path}")
+
+    return vix_crsp
+
+
+
+def clean_vix(
+        df : pd.DataFrame,
+        path : str = None
+) -> pd.DataFrame:
+
+
+    # 1. Set path
+    if path == None:
+        path = config.VIX_PATH_RAW
+
+    df = df.dropna()
+    df = df.set_index('date')
+    df = df.astype('float32')
+
+    ma_range = config.MA_RANGE
+    for elem in ma_range:
+        df[f'vix_ma_{elem}'] = df['vix'].rolling(window=elem, min_periods=elem).mean().astype('float32')
+
+    df = df.dropna()
+
+    df.to_parquet(config.VIX_PATH_CLEAN, index=True)
+    print('Saved as .parquet file to {config.VIX_PATH_CLEAN}')
+
+    return df

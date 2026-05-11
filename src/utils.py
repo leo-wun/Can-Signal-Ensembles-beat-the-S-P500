@@ -101,6 +101,7 @@ def generate_batches(df : pd.DataFrame, sample_col : str, batch_number : int, ba
 
 def generate_date_split(
         df : pd.DataFrame,
+        df_to_join : list[pd.DataFrame] = None,
         date_col : str = 'date',
         train_split : float = 0.7,
         val_split : float = 0.15
@@ -136,24 +137,42 @@ def generate_date_split(
             f"train_split + val_split must be < 1, got {train_split + val_split}"
         )
 
-    # Check if column date_col exist
-    if date_col in df.columns:
-        dates = df[date_col]
-    elif isinstance(df.index, pd.MultiIndex) and date_col in df.index.names:
-        dates = df.index.get_level_values(date_col)
-    elif df.index.name == date_col:
-        dates = df.index
-    else:
-        raise KeyError(
-            f"Column or index level '{date_col}' not found. "
-            f"Available columns: {list(df.columns)}, "
-            f"index names: {df.index.names}"
-        )
+    def get_dates(dataframe, col_name):
+        if col_name in dataframe.columns:
+            return dataframe[col_name]
+        elif isinstance(dataframe.index, pd.MultiIndex) and col_name in dataframe.index.names:
+            return dataframe.index.get_level_values(col_name)
+        elif dataframe.index.name == col_name:
+            return dataframe.index
+        else:
+            raise KeyError(
+                f"Column or index level '{col_name}' not found. "
+                f"Available columns: {list(dataframe.columns)}, "
+                f"index names: {dataframe.index.names}"
+            )
 
 
-    # Convert to datetime and sort
-    unique_dates = pd.to_datetime(pd.Series(dates).unique())
-    unique_dates = pd.Series(unique_dates).sort_values().reset_index(drop=True)
+    # 1. Get range of main dataframe
+    main_dates = get_dates(df, date_col)
+
+    # 2. Get the max range common to all dataframe we want to merge
+    common_min_date = main_dates.min()
+    common_max_date = main_dates.max()
+
+    for elem in df_to_join:
+        elem_dates = get_dates(elem, date_col)
+        # Narrow the window to the maximum of the minimums, and minimum of the maximums
+        common_min_date = max(common_min_date, elem_dates.min())
+        common_max_date = min(common_max_date, elem_dates.max())
+
+
+    # 3. Convert main dates to datetime, get unique, and sort
+    unique_dates = pd.to_datetime(pd.Series(main_dates.unique()))
+    unique_dates = unique_dates.sort_values().reset_index(drop=True)
+
+    # 4. Filter dates to only use the max common range computed above
+    unique_dates = unique_dates[(unique_dates >= common_min_date) & (unique_dates <= common_max_date)]
+    unique_dates = unique_dates.reset_index(drop=True) # Reset index after filtering
 
     n = len(unique_dates)
     if n < 3:
@@ -209,7 +228,7 @@ def train_val_test_split(
 
     # Generate date split
 
-    date_split = generate_date_split(df = df, date_col = date_col, train_split=train_split, val_split=val_split)
+    date_split = generate_date_split(df = df, df_to_join = df_to_join, date_col = date_col, train_split=train_split, val_split=val_split)
 
     TRAIN_START = date_split['train'][0]
     TRAIN_END = date_split['train'][1]

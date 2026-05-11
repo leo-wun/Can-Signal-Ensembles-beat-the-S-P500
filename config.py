@@ -15,6 +15,10 @@ CRSP_PATH_CLEAN = DATA_PROCESSED / "daily_crsp.parquet"
 FEATURES_PATH_CLEAN = DATA_PROCESSED / "features.parquet"
 CZ_PATH_CLEAN = DATA_PROCESSED / "Chen_Zimmerman_monthly.parquet"
 
+VIX_PATH_RAW = DATA_RAW / "vix.parquet"
+VIX_PATH_CLEAN = DATA_PROCESSED / "vix.parquet"
+
+
 # Project date window (overlap of CRSP and futures with sufficient coverage)
 START_DATE = "2000-01-01"
 END_DATE = "2020-11-30"
@@ -34,6 +38,10 @@ VOLATILITY_WINDOWS = [21, 63, 252]          # 1m, 3m, 12m
 
 # Futures: how many lags of futures log returns to include as macro features
 FUTURES_LAGS = [1, 2, 3, 5]               # t-1 through t-5
+
+# Moving average for VIX
+MA_RANGE = [63, 126, 252]
+
 
 # Minimum number of non-null observations for a futures instrument to be kept
 FUTURES_MIN_HISTORY_YEARS = 5.0

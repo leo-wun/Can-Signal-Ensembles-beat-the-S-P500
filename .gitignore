@@ -11,4 +11,6 @@ password.py
 
 
 __pycache__/
-*.pyc
+*.py
+
+.env
