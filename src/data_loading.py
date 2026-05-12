@@ -4,6 +4,7 @@ import sys, os
 from pathlib import Path
 import wrds
 import polars as pl
+from sklearn.preprocessing import RobustScaler
 
 import password
 
@@ -285,6 +286,10 @@ def load_cz_monthly(path : str = None,
     df_cz_daily[num_cols] = df_cz_daily[num_cols] / 100
 
 
+    # 6. Shift by 1 
+    df_cz_daily = df_cz_daily.shift(1).dropna()
+
+
     return df_cz_daily
 
 
@@ -347,15 +352,26 @@ def clean_vix(
     if path == None:
         path = config.VIX_PATH_RAW
 
+    # 2. Set date as index and make it unique
+   
     df = df.dropna()
     df = df.set_index('date')
     df = df.astype('float32')
 
+    df = df[~df.index.duplicated(keep='last')]
+
+    # 3. Reduce dataframe RAM size
     ma_range = config.MA_RANGE
     for elem in ma_range:
         df[f'vix_ma_{elem}'] = df['vix'].rolling(window=elem, min_periods=elem).mean().astype('float32')
 
     df = df.dropna()
+
+    # 4. One day shift
+    df = df.shift(1).dropna()
+
+    # 5. Normalize
+    df = df / 100
 
     df.to_parquet(config.VIX_PATH_CLEAN, index=True)
     print('Saved as .parquet file to {config.VIX_PATH_CLEAN}')

@@ -12,12 +12,14 @@ Pipeline:
 
 import pandas as pd
 import polars as pl
+import polars.selectors as cs
 import numpy as np
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
+
 
 
 # ── Stock-level features ──────────────────────────────────────────────────────
@@ -399,7 +401,7 @@ def polars_features(
         value_col : str = 'ret',
         date_col : str = 'date',
         target_col : str = 'ret',
-        reversal : bool = True
+        crosssectional_rank : bool = True
 ) -> pl.DataFrame:
 
     """
@@ -419,18 +421,25 @@ def polars_features(
     """
 
 
-    shift_days = 0
-    if reversal:
-        shift_days = 7
+    shift_days = 1
+    
         
     # 1. Check if dataframe provided is polars or pandas. Transform to polars 
     
     if isinstance(df, pd.DataFrame):
         df = pl.from_pandas(df)
     
-    
 
-    # 2. Structure for momentum features
+    # 2. Clip to 1% and 99% quantile
+    q_low = df[value_col].quantile(0.01)
+    q_high = df[value_col].quantile(0.99)
+
+    df = df.with_columns(
+        pl.col(value_col).clip(lower_bound = q_low, upper_bound = q_high)
+    )
+
+
+    # 3. Structure for momentum features
     momentum_exprs = [
     (
         pl.col(value_col)
@@ -445,7 +454,7 @@ def polars_features(
     for window in config.MOMENTUM_WINDOWS
     ]
     
-    # 3. Structure for volatility features
+    # 4. Structure for volatility features
     
     vol_exprs = [
     (
@@ -459,7 +468,7 @@ def polars_features(
     ]
     
     
-    # 4. Structure for volatility weighted momentum
+    # 5. Structure for volatility weighted momentum
     vol_w_mom_exprs = []
     
     # Creating a combination of all momentum and volatility windows. We weight momentum by rolling std computed on a similar window.
@@ -487,9 +496,17 @@ def polars_features(
             .shift(1)
             .over('PERMNO')
             .alias('log_reversal_1d'),
+
+        # Market Return
+        pl.col('mkt_ret')
+            .log1p()
+            .shift(1)
+            .over('PERMNO')
+            .alias('log_reversal_mkt_1d'),
             
         # Target 
         pl.col(target_col)
+
             .alias('target'),
 
         # Other features
@@ -500,6 +517,34 @@ def polars_features(
 
 
     ])
+
+    # ── Cross-sectional rank normalization ────────────────────────────────
+    # Applied AFTER computing features, per date, on cross-sectional cols only.
+    # Macro features (e.g. mkt_ret) are excluded — they are identical across
+    # stocks on a given date so ranking them is meaningless.
+
+    if crosssectional_rank:
+        cs_cols = (
+            [f"mom_{w}d" for w in config.MOMENTUM_WINDOWS]
+            + [f"vol_{w}d" for w in config.VOLATILITY_WINDOWS]
+            + [f"vol_w_mom_{w}d_std_{w}d" for w in config.MOMENTUM_WINDOWS]
+            + ["log_reversal_1d"]
+            # Do NOT include: log_reversal_mkt_1d, VIX, or any macro feature
+        )
+
+        rank_exprs = [
+            (
+                pl.col(col)
+                .rank(method="average")          # average handles ties
+                .over(date_col)                  # cross-sectional: rank within each date
+                / pl.col(col).count().over(date_col)  # normalize to [0, 1]
+                - 0.5                            # center to [-0.5, 0.5]
+            )
+            .alias(col)
+            for col in cs_cols
+        ]
+
+        df = df.with_columns(rank_exprs)
 
     return df
 
