@@ -430,12 +430,10 @@ def polars_features(
         df = pl.from_pandas(df)
     
 
-    # 2. Clip to 1% and 99% quantile
-    q_low = df[value_col].quantile(0.01)
-    q_high = df[value_col].quantile(0.99)
+    # 2. Clip to arbitrary values (-50%, +50%)
 
     df = df.with_columns(
-        pl.col(value_col).clip(lower_bound = q_low, upper_bound = q_high)
+        pl.col(value_col).clip(lower_bound = -0.50, upper_bound = 0.50)
     )
 
 
@@ -459,6 +457,7 @@ def polars_features(
     vol_exprs = [
     (
         pl.col(value_col)
+        .shift(1)
         .rolling_std(window_size = window)
     )
     .shift(shift_days)
@@ -477,7 +476,7 @@ def polars_features(
             (
                 # Use standard division `/` operator instead of .divide()
                 (pl.col(value_col).log1p().rolling_sum(window_size=mom_window).exp() - 1) 
-                / pl.col(value_col).rolling_std(window_size=mom_window)
+                / pl.col(value_col).shift(1).rolling_std(window_size=mom_window)
             )
             .shift(shift_days)
             .over("PERMNO")
