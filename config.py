@@ -18,6 +18,9 @@ CZ_PATH_CLEAN = DATA_PROCESSED / "Chen_Zimmerman_monthly.parquet"
 VIX_PATH_RAW = DATA_RAW / "vix.parquet"
 VIX_PATH_CLEAN = DATA_PROCESSED / "vix.parquet"
 
+GSPC_PATH_RAW = DATA_RAW / 'gspc.parquet'
+GSPC_PATH_CLEAN = DATA_PROCESSED / 'gspc.parquet'
+
 
 # Project date window (overlap of CRSP and futures with sufficient coverage)
 START_DATE = "2000-01-01"

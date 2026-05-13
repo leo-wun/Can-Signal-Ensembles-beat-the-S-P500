@@ -377,3 +377,49 @@ def clean_vix(
     print('Saved as .parquet file to {config.VIX_PATH_CLEAN}')
 
     return df
+
+
+def fetch_sp500(
+    start_date = None,
+    end_date = None,
+    path : str = None
+) -> pd.DataFrame:
+    
+    '''
+    Query S&P500 data on wrds
+    
+    
+    '''
+    
+    # 1. Set destination
+
+    if path == None:
+        path = config.GSPC_PATH_RAW
+
+    # 2. Connect to wrds database
+
+    db = wrds.Connection()
+
+    # 3. Construction dynamique de la requête SQL
+    if start_date and end_date:
+        # Si les dates sont spécifiées, on filtre
+        sp500 = f"""
+            SELECT date, vwretd, ewretd, sprtrn
+            FROM crsp.dsi
+            WHERE caldt >= '{start_date}',
+            AND caldt <= '{end_date}'
+        """
+    else:
+        # RANGE MAXIMAL : Si aucune date n'est fournie, on prend tout
+        sp500 = """
+            SELECT date, vwretd, ewretd, sprtrn
+            FROM crsp.dsi
+        """
+
+    gspc_crsp = db.raw_sql(sp500, date_cols=['date'])
+    gspc_crsp['date'] = pd.to_datetime(gspc_crsp['date'])
+
+    gspc_crsp.to_parquet(path, index=False)
+    print(f"Data saved to {path}")
+
+    return gspc_crsp
