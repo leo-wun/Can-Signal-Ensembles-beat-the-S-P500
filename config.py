@@ -10,13 +10,18 @@ COMPUSTAT_PATH = DATA_RAW / "Compustat_quarterly.csv"
 FUTURES_PATH = DATA_RAW / "daily_futures.csv"
 JKP_PATH = DATA_RAW / "JKP_factors_US_monthly.csv"
 CZ_PATH = DATA_RAW / "Chen_Zimmerman_monthly.csv"
+CRSP_PATH_RAW = DATA_RAW / "daily_crsp_raw.parquet"
+VIX_PATH_RAW = DATA_RAW / "vix_raw.parquet"
+CZ_PATH_RAW = DATA_RAW/ "Chen_Zimmerman_monthly_raw.parquet"
+
 
 CRSP_PATH_CLEAN = DATA_PROCESSED / "daily_crsp.parquet"
 FEATURES_PATH_CLEAN = DATA_PROCESSED / "features.parquet"
 CZ_PATH_CLEAN = DATA_PROCESSED / "Chen_Zimmerman_monthly.parquet"
-
-VIX_PATH_RAW = DATA_RAW / "vix.parquet"
 VIX_PATH_CLEAN = DATA_PROCESSED / "vix.parquet"
+
+
+
 
 
 # Project date window (overlap of CRSP and futures with sufficient coverage)

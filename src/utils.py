@@ -48,8 +48,8 @@ def shrink_polars(df) -> pl.DataFrame:
     if 'PERMNO' in df.columns:
         specific_casts.append(pl.col('PERMNO').cast(pl.Int32))
         
-    if 'date' in df.columns:
-        specific_casts.append(pl.col('date').cast(pl.Datetime('ms')))
+    # date is intentionally not downcast — changing datetime precision
+    # (ms vs ns) causes silent merge failures in pandas 2.x
         
     # Apply specific casts if there are any
     if specific_casts:

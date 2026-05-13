@@ -5,45 +5,12 @@ from pathlib import Path
 import wrds
 import polars as pl
 from sklearn.preprocessing import RobustScaler
-
 import password
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 
 
-def load_crsp(path=None) -> pd.DataFrame:
-    """Load CRSP daily stock returns."""
-    path = path or config.CRSP_PATH
-    df = pd.read_csv(
-        path,
-        low_memory=False,
-        dtype={"PERMNO": int, "PERMCO": "Int64", "SICCD": str, "NAICS": str, 'Ticker' : 'category'},
-        parse_dates=["DlyCalDt"],
-    )
-    df.rename(columns={"DlyCalDt": "date", "DlyRet": "ret", "sprtrn": "mkt_ret"}, inplace=True)
-    df.sort_values(["PERMNO", "date"], inplace=True)
-    df.reset_index(drop=True, inplace=True)
-
-    start_date = df['date'].min()
-    end_date = df['date'].max()
-
-    db = wrds.Connection()
-    # Fetch price and shares data for market cap calculations.
-    permno_list = ",".join(str(int(p)) for p in df["PERMNO"].dropna().unique())
-    query = f"""
-    SELECT permno, date, prc AS dlyprc, shrout
-    FROM crsp.dsf
-    WHERE date BETWEEN '{start_date}' AND '{end_date}'
-      AND permno IN ({permno_list})`
-    """
-    wrds_df = db.raw_sql(query, date_cols=["date"])
-    wrds_df.rename(columns={"permno": "PERMNO", "dlyprc": "DlyPrc", "shrout": "ShrOut"}, inplace=True)
-
-    df = df.merge(wrds_df, on=["PERMNO", "date"], how="left")
-    df["mktcap"] = df["DlyPrc"].abs() * df["ShrOut"] * 1_000
-    df["log_mktcap"] = np.log(df["mktcap"].clip(lower=1))
-    return df
 
 
 def load_crsp_polars(path=None):
@@ -61,150 +28,16 @@ def load_crsp_polars(path=None):
     df = df.rename({'DlyCalDt' : 'date', 'sprtrn' : 'mkt_ret', 'DlyRet' : 'ret'})
     df = df.sort(['PERMNO', 'date'], descending=False)
 
-    bad_permnos = (
-        df.group_by('PERMNO')
-        .agg(pl.col('ret').is_null().any().alias('has_null'))
-        .filter(pl.col('has_null'))
-        .select('PERMNO')
-        .to_series()
-        .to_list()
-    )
+    PATH = path or config.CRSP_PATH_RAW
 
-    df = df.filter(~pl.col('PERMNO').is_in(bad_permnos))
+    df.to_pandas().to_parquet(PATH, index=False)
+    print(f'Saved as .parquet file to {PATH}')
 
     return df
 
 
-def wrds_fetch(permno_list, start_date, end_date):
-
-    # WRDS FETCH
-    print('/!| PLEASE FILL CREDENTIALS /!|')
-    db = wrds.Connection()
-
-    # Fetch price and shares data for market cap calculations.
-    permno_list_sql = ",".join(str(int(p)) for p in permno_list)
-    query = f"""
-    SELECT permno, date, prc AS dlyprc, shrout
-    FROM crsp.dsf
-    WHERE date BETWEEN '{start_date}' AND '{end_date}'
-    AND permno IN ({permno_list_sql})
-    """
-    wrds_df = db.raw_sql(query, date_cols=["date"])
-    wrds_df = pl.from_pandas(wrds_df)
-    wrds_df = wrds_df.rename({"permno": "PERMNO", "dlyprc": "DlyPrc", "shrout": "ShrOut"})
-
-    wrds_df = wrds_df.with_columns(
-        pl.col('date').cast(pl.Date)
-    )
-
-    return wrds_df
 
 
-
-def Fama_French_fetch(
-        permno_list : list,
-        start_date,
-        end_date
-) -> pl.DataFrame:
-    
-    """
-    Gather all values necessary to build a FAMA-FRENCH 3 Factors from a PERMNO list
-
-    Input -> 
-
-    permno_list:            List of all PERMNOs for which we want to get values
-    start_date:             Starting date
-    end_date:               Ending date
-
-
-    Output ->
-
-    df:                     Dataframe containing all values by PERMNO    
-    
-    """
-    
-    # WRDS FETCH
-    print('/!| PLEASE FILL CREDENTIALS /!|')
-    db = wrds.Connection(username=password.WRDS_USERNAME, password=password.WRDS_PASSWORD)
-
-    # Transform permno_list to something sql can work with
-
-    permno_list_sql = ",".join(str(int(p)) for p in permno_list)
-
-
-    # Get the risk-free rate (Daily values)
-
-    sql_rf = f"""
-        SELECT date, rf
-        FROM ff.factors_daily
-        WHERE date >= '{start_date}'
-        AND date <= '{end_date}'
-    """
-
-    df_rf = db.raw_sql(sql_rf, date_cols=['date'])
-
-
-    # Get Book-to-Market (Monthly values)
-
-    sql_bm = f"""
-        SELECT permno, public_date as date, bm
-        FROM wrdsapps.firm_ratio
-        WHERE permno IN ({permno_list_sql})
-        AND public_date >= '{start_date}'
-        AND public_date <= '{end_date}'
-    """
-
-    df_bm = db.raw_sql(sql_bm, date_cols=['date'])
-
-    # Get stock returns and market cap (Daily values)
-
-    sql_crsp = f"""
-        SELECT permno, date, ret, prc, shrout
-        FROM crsp.dsf
-        WHERE permno IN ({permno_list_sql})
-        AND date >= '{start_date}'
-        AND date <= '{end_date}'
-    """
-
-    df_crsp = db.raw_sql(sql_crsp, date_cols=['date'])
-
-    db.close()
-
-    print('Fetch complete, merging datasets ...')
-
-    
-    # Convert to polars dataframe
-    pl_rf = pl.from_pandas(df_rf).sort('date')
-    pl_bm = pl.from_pandas(df_bm).sort('date')
-    pl_crsp = pl.from_pandas(df_crsp).sort('date')
-
-    # Merge CRSP and RF on daily 
-    df = pl_crsp.join(pl_rf, on='date', how='left')
-    
-
-    # Merge df and BM using asof to autofill daily data with monthly values 
-    df = df.join_asof(pl_bm, on='date', by='permno', strategy='backward')
-
-
-    # Polars computation
-    df = df.with_columns([
-        (pl.col('prc').abs() * pl.col('shrout')).alias('market_cap'),
-        (pl.col('ret') - pl.col('rf')).alias('excess_return')
-    ])
-
-    df = df.drop(['prc', 'shrout'])
-
-
-    return df
-    
-
-def load_futures(path=None) -> pd.DataFrame:
-    """Load daily futures prices (wide format, one column per instrument)."""
-    path = path or config.FUTURES_PATH
-    df = pd.read_csv(path, parse_dates=["date"])
-    df.sort_values("date", inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    return df
 
 
 
@@ -225,95 +58,36 @@ def load_cz_monthly(path : str = None,
     Output ->
 
     df:                     Dataframe of the normalized, daily frequency data
-    
-    
     """
 
-    PATH = path or config.CZ_PATH
+    PATH = path or config.CZ_PATH_RAW
 
-    df_cz = pd.read_csv(PATH, parse_dates=[date_col])
-    N, c = df_cz.shape
-
-    print(f'Initial Size of the dataset: {N, c}')
-
-    max_date = df_cz['date'].max()
-    min_date = df_cz['date'].min()
-    print(f'Total Date range : {min_date} -> {max_date}')
-
-
-    # 1. Get rid of columns with too many NaN
-
-    thresh = completion_factor * df_cz.shape[0]
-    df_cz = df_cz.dropna(thresh=thresh, axis=1)
-    print(f'Dataset shape after dropping column with less than {completion_factor * 100}% completion: {df_cz.shape}')
-    print(f'Total column dropped so far : {c - df_cz.shape[1]}')
-
-
-    # 2. Study intercolumn correlation (remove column with too high absolute correlation)
-
-    # Create correlation matrix
-    corr_matrix = df_cz.corr().abs()
-
-    # Select upper triangle of correlation matrix
-    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-
-    # Find features with correlation greater than corr_coef
-    to_drop = [column for column in upper.columns if any(upper[column] > corr_coef)]
-
-    # Drop features 
-    df_cz.drop(to_drop, axis=1, inplace=True)
-
-    print(f'Dataset shape after dropping highly correlated (corr_coef > {corr_coef}) columns: {df_cz.shape}')
-    print(f'Total column dropped so far : {c - df_cz.shape[1]}')
-
-    # 3. Expansion en daily avec forward fill
-    df_cz = df_cz.set_index('date').sort_index()
-
-    daily_index = pd.date_range(
-        start=df_cz.index.min(),
-        end=df_cz.index.max() + pd.offsets.MonthEnd(1),  # étendre jusqu'à fin du dernier mois
-        freq='D'
-    )
-
-    df_cz_daily = df_cz.reindex(daily_index).ffill()
-    df_cz_daily.index.name = 'date'
-    df_cz_daily = df_cz_daily.reset_index()
-    df_cz_daily = df_cz_daily.dropna(axis=0)
+    df_cz = pd.read_csv(config.CZ_PATH, parse_dates=[date_col])
     
+    df_cz.to_parquet(PATH, index=False)
+    print(f'Saved as .parquet file to {PATH}')
 
-    # 5. Scale % to decimal
-    num_cols = df_cz_daily.select_dtypes('number').columns
-    df_cz_daily[num_cols] = df_cz_daily[num_cols] / 100
-
-
-    # 6. Shift by 1 
-    df_cz_daily = df_cz_daily.shift(1).dropna()
-
-
-    return df_cz_daily
+    return df_cz
 
 
 
-def fetch_VIX(
-    start_date = None,
-    end_date = None,
+
+
+
+def load_VIX(
+    start_date = config.START_DATE,
+    end_date = config.END_DATE,
     path : str = None
 ) -> pd.DataFrame:
-    
 
     '''
     Query VIX data on wrds
     
-    
     '''
-    
     # 1. Set destination
-
-    if path == None:
-        path = config.VIX_PATH_RAW
+    PATH = path or config.VIX_PATH_RAW
 
     # 2. Connect to wrds database
-
     db = wrds.Connection()
 
     # 3. Construction dynamique de la requête SQL
@@ -335,45 +109,9 @@ def fetch_VIX(
     vix_crsp = db.raw_sql(sql_cboe, date_cols=['date'])
     vix_crsp['date'] = pd.to_datetime(vix_crsp['date'])
 
-    vix_crsp.to_parquet(path, index=False)
-    print(f"Data saved to {path}")
+    vix_crsp.to_parquet(PATH, index=False)
+    print(f'Saved as .parquet file to {PATH}')
 
     return vix_crsp
 
 
-
-def clean_vix(
-        df : pd.DataFrame,
-        path : str = None
-) -> pd.DataFrame:
-
-
-    # 1. Set path
-    if path == None:
-        path = config.VIX_PATH_RAW
-
-    # 2. Set date as index and make it unique
-   
-    df = df.dropna()
-    df = df.set_index('date')
-    df = df.astype('float32')
-
-    df = df[~df.index.duplicated(keep='last')]
-
-    # 3. Reduce dataframe RAM size
-    ma_range = config.MA_RANGE
-    for elem in ma_range:
-        df[f'vix_ma_{elem}'] = df['vix'].rolling(window=elem, min_periods=elem).mean().astype('float32')
-
-    df = df.dropna()
-
-    # 4. One day shift
-    df = df.shift(1).dropna()
-
-    # 5. Normalize
-    df = df / 100
-
-    df.to_parquet(config.VIX_PATH_CLEAN, index=True)
-    print('Saved as .parquet file to {config.VIX_PATH_CLEAN}')
-
-    return df
