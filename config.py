@@ -20,6 +20,9 @@ FEATURES_PATH_CLEAN = DATA_PROCESSED / "features.parquet"
 CZ_PATH_CLEAN = DATA_PROCESSED / "Chen_Zimmerman_monthly.parquet"
 VIX_PATH_CLEAN = DATA_PROCESSED / "vix.parquet"
 
+GSPC_PATH_RAW = DATA_RAW / 'gspc.parquet'
+GSPC_PATH_CLEAN = DATA_PROCESSED / 'gspc.parquet'
+
 
 
 
