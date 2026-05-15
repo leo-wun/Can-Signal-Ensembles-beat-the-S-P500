@@ -3,7 +3,7 @@ import pandas as pd
 import polars as pl
 import polars.selectors as cs
 import numpy as np
-import sys
+import sys, os, gc
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -254,6 +254,23 @@ def train_val_test_split(
             test_df = test_df.join(elem, on=date_col, how='left')
 
 
+    # Étape 1 : drop if target is NaN 
+    TARGET_COL = 'target' 
+    train_df = train_df.dropna(subset=[TARGET_COL])
+    val_df   = val_df.dropna(subset=[TARGET_COL])
+    test_df  = test_df.dropna(subset=[TARGET_COL])
+    
+    # Étape 2 : Get columns features
+    feature_cols = [c for c in train_df.columns if c not in [TARGET_COL, 'PERMNO']]
+    
+    # Option B (meilleure) : imputer avec la médiane du train
+    medians = train_df[feature_cols].median()
+    train_df[feature_cols] = train_df[feature_cols].fillna(medians)
+    val_df[feature_cols]   = val_df[feature_cols].fillna(medians)
+    test_df[feature_cols]  = test_df[feature_cols].fillna(medians)
+    
+    print(f"After dropna - train: {len(train_df)}, val: {len(val_df)}, test: {len(test_df)}")
+
     return (train_df, val_df, test_df)
 
 
@@ -266,7 +283,9 @@ def split_batch(df : pd.DataFrame,
                 df_to_join : list[pd.DataFrame] = None,
                 batch_number : int = 5,
                 batch_size : int = 500,
-                overlap : bool = True
+                overlap : bool = True,
+                train_split : float = 0.70,
+                val_split : float = 0.15
 ) -> dict:
     """
     Take the dataframe, apply random sampling on the sample_col to create batch_number of batch each of size batch_size.
@@ -297,7 +316,7 @@ def split_batch(df : pd.DataFrame,
 
     for batch_name, batch_df in batch_dict.items():
         # Call the split function
-        train_df, val_df, test_df = train_val_test_split(batch_df, date_col, df_to_join=df_to_join)
+        train_df, val_df, test_df = train_val_test_split(batch_df, date_col, df_to_join=df_to_join, train_split=train_split, val_split=val_split)
 
         # Store the tuple
         split_batch_dict[batch_name] = {
@@ -306,5 +325,93 @@ def split_batch(df : pd.DataFrame,
             'test' : test_df
         }
 
+
+    return split_batch_dict
+
+
+def _ensure_date_as_column(df: pd.DataFrame, date_col: str = "date") -> pd.DataFrame:
+    """Garantit que `date_col` est une colonne, pas un index."""
+    if date_col in df.columns:
+        return df
+    if df.index.name == date_col or date_col in (df.index.names or []):
+        return df.reset_index()
+    raise KeyError(f"'{date_col}' n'est ni colonne ni index de ce DataFrame")
+
+
+def merge_and_batch(
+    train_split: float = 0.70,
+    val_split: float = 0.15,
+    verbose: bool = True,
+) -> dict:
+    """
+    Read the features/cz/vix parquet files, deduplicate, and make the batch/split.
+    """
+
+    # 1. Load
+    features = pd.read_parquet(config.FEATURES_PATH_CLEAN)
+    cz       = pd.read_parquet(config.CZ_PATH_CLEAN)
+    vix      = pd.read_parquet(config.VIX_PATH_CLEAN)
+
+    # 2. Normaliser : date en colonne pour tous les df (homogénéité)
+    features = _ensure_date_as_column(features, "date")
+    cz       = _ensure_date_as_column(cz, "date")
+    vix      = _ensure_date_as_column(vix, "date")
+
+    # 3. Déduplication
+    n_before = len(features)
+    features = features.drop_duplicates(subset=["date", "PERMNO"], keep="last")
+    if verbose:
+        print(f"features : {n_before - len(features)} doublons (date, PERMNO) supprimés")
+
+    n_before = len(cz)
+    cz = cz.drop_duplicates(subset="date", keep="last")
+    if verbose:
+        print(f"cz       : {n_before - len(cz)} doublons (date) supprimés")
+
+    n_before = len(vix)
+    vix = vix.drop_duplicates(subset="date", keep="last")
+    if verbose:
+        print(f"vix      : {n_before - len(vix)} doublons (date) supprimés")
+
+    # 4. Merge VIX avec CZ
+    df_tmp = pd.merge(cz, vix, on="date", how="inner")
+
+    n_dup = df_tmp.duplicated(subset="date").sum()
+    if n_dup > 0:
+        if verbose:
+            print(f"⚠ df_tmp (cz+vix) : {n_dup} doublons après merge — dédup forcé")
+        df_tmp = df_tmp.drop_duplicates(subset="date", keep="last")
+
+    # 5. set_index pour le .join() en aval (date doit être l'index de df_tmp)
+    df_tmp = df_tmp.set_index("date")
+
+    if verbose:
+        print(f"Number of unique PERMNO in dataset : {features['PERMNO'].nunique()}")
+        print(f"Number of unique dates in df_tmp   : {df_tmp.index.nunique()}")
+
+    # 6. Split
+    split_batch_dict = split_batch(
+        features,
+        sample_col="PERMNO",
+        date_col="date",
+        df_to_join=[df_tmp],
+        batch_number=config.BATCH_NUMBER,
+        batch_size=config.BATCH_SIZE,
+        overlap=False,
+        train_split=train_split,
+        val_split=val_split,
+    )
+
+    # 7. Sanity check post-split
+    if verbose:
+        for batch_name, splits in split_batch_dict.items():
+            for split_name, split_df in splits.items():
+                n_dup = split_df.index.duplicated().sum()
+                if n_dup > 0:
+                    print(f"⚠ {batch_name}/{split_name} : {n_dup} doublons restants")
+
+    # 8. Cleanup
+    del features, cz, vix, df_tmp
+    gc.collect()
 
     return split_batch_dict

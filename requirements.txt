@@ -8,3 +8,5 @@ wrds
 lightgbm
 ipykernel
 seaborn
+xgboost
+lightgbm
