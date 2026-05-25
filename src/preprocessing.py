@@ -67,7 +67,12 @@ def clean_cz_monthly(path=None, date_col='date', completion_factor=0.9, corr_coe
     df_cz_daily = df_cz_daily.dropna()
     df_cz_daily = df_cz_daily[(df_cz_daily[date_col] >= start_date) & (df_cz_daily[date_col] <= end_date)]
 
-    df_cz_daily.to_parquet(config.CZ_PATH_CLEAN, index=False)
+    # Save with `date` as the (ms-precision) index. This is the canonical format:
+    # regime_validation.py joins on the date index and expects only factor columns,
+    # while utils.merge_and_batch normalises via _ensure_date_as_column.
+    df_cz_daily = df_cz_daily.set_index(date_col).sort_index()
+    df_cz_daily.index = pd.to_datetime(df_cz_daily.index).astype('datetime64[ms]')
+    df_cz_daily.to_parquet(config.CZ_PATH_CLEAN)
     print(f'Saved as .parquet file to {config.CZ_PATH_CLEAN}')
     return df_cz_daily
 

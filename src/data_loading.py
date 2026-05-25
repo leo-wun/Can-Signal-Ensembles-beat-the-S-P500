@@ -197,3 +197,78 @@ def fetch_sp500(
     print(f"Data saved to {path}")
 
     return gspc_crsp
+
+
+
+
+def fetch_crsp_liquidity(
+    start_date: str = '2000-01-01',
+    end_date: str = '2024-12-31',
+    path: str = None,
+) -> pd.DataFrame:
+    """
+    Pull daily price, market cap and dollar volume from the CRSP CIZ daily
+    stock file (crsp.dsf_v2). These liquidity columns were dropped by
+    load_crsp_polars but are needed to build a tradable-universe filter.
+
+    The pull is restricted to the PERMNO universe present in features.parquet.
+    dlyprc may be negative when CRSP stores a bid/ask average — take abs() when
+    using it as a price level.
+    """
+    PATH = path or config.CRSP_LIQUIDITY_RAW
+
+    permnos = pd.read_parquet(config.FEATURES_PATH_CLEAN, columns=['PERMNO'])['PERMNO']
+    permno_list = ','.join(str(int(p)) for p in permnos.dropna().unique())
+
+    db = wrds.Connection(wrds_username=password.WRDS_USERNAME,
+                         wrds_password=password.WRDS_PASSWORD)
+    sql = f"""
+        SELECT permno, dlycaldt, dlyprc, dlycap, dlyprcvol
+        FROM crsp.dsf_v2
+        WHERE dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+          AND permno IN ({permno_list})
+    """
+    df = db.raw_sql(sql, date_cols=['dlycaldt'])
+    db.close()
+
+    df = df.rename(columns={'dlycaldt': 'date', 'permno': 'PERMNO'})
+    df['PERMNO'] = df['PERMNO'].astype('int32')
+    df.to_parquet(PATH, index=False)
+    print(f'CRSP liquidity data saved to {PATH}  ({len(df):,} rows)')
+
+    return df
+
+
+
+
+def fetch_ccm_linktable(path: str = None) -> pd.DataFrame:
+    """
+    Pull the CRSP/Compustat Merged (CCM) linking table from WRDS.
+
+    Maps Compustat gvkey to CRSP lpermno with validity ranges (linkdt,
+    linkenddt). Filtered to high-quality primary links: linktype in
+    {'LC','LU'} and linkprim in {'P','C'}. This is the recommended way to link
+    Compustat with CRSP, per the project guidelines.
+    """
+    PATH = path or config.CCM_LINKTABLE_PATH
+    db = wrds.Connection(wrds_username=password.WRDS_USERNAME,
+                         wrds_password=password.WRDS_PASSWORD)
+    sql = """
+        SELECT gvkey, lpermno, lpermco, linktype, linkprim, liid,
+               linkdt, linkenddt
+        FROM crsp.ccmxpf_lnkhist
+        WHERE linktype IN ('LC','LU') AND linkprim IN ('P','C')
+    """
+    df = db.raw_sql(sql, date_cols=['linkdt', 'linkenddt'])
+    db.close()
+
+    df = df.dropna(subset=['gvkey', 'lpermno'])
+    df['gvkey']   = pd.to_numeric(df['gvkey'],   errors='coerce').astype('Int64')
+    df['lpermno'] = pd.to_numeric(df['lpermno'], errors='coerce').astype('Int64')
+    df = df.dropna(subset=['gvkey', 'lpermno'])
+    df['gvkey']   = df['gvkey'].astype('int64')
+    df['lpermno'] = df['lpermno'].astype('int64')
+
+    df.to_parquet(PATH, index=False)
+    print(f'CCM linktable saved to {PATH}  ({len(df):,} rows)')
+    return df

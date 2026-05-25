@@ -1,15 +1,26 @@
-*.lock
-*.toml
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Secrets / credentials (never commit)
+password.py
+.env
+
+# Data — large; distributed via the raw-data archive link in the README
+data/
 *.csv
 *.parquet
-*.venv
 
-data/
-
-
-password.py
-
-
-__pycache__/
-
-.env
+# LaTeX build artifacts (the compiled report/main.pdf is NOT ignored)
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
