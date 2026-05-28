@@ -189,11 +189,34 @@ if __name__ == "__main__":
 Commentary on "monthly_model_equity.png"
 
 
+The unique element observable on the equity graph is the failur of models 
+during the Covid crisis. An hypothesis to explain such poor results is the intensity with which
+the market exploded after the 2020 crisis. 
 
 
+The severe underperformance of cross-sectional ML models between 
+late 2020 and 2022 highlights a fundamental vulnerability in quantitative Long/Short (L/S) equity 
+strategies: regime shifts driven by macroeconomic anomalies.
+
+Following the initial COVID-19 crash, unprecedented central bank stimulus and zero-interest-rate policies 
+flooded the market with liquidity. This ignited a highly speculative retail environment. During this time, 
+the lowest-quality,  highest-volatility experienced massive, irrational price surges.
+
+The chart shows a sharp recovery for your ML models beginning in 2022. This aligns perfectly with the Federal Reserve 
+raising interest rates to combat inflation. As cheap liquidity dried up, speculative capital fled the market. 
+The low-quality companies crashed back to earth, meaning your short leg became highly profitable again and the models' 
+historical edge was restored.
+
+This period serves as a stress test proving that pure cross-sectional ML without macro-level risk management is dangerous.
+Because models cannot predict unprecedented structural shifts in monetary policy, strategies like this typically 
+require market beta neutralization, dynamic hedging, or gross-exposure limits to survive periods when the market 
+temporarily stops caring about fundamentals.
+
+Due to lack of time, such feature has not been implemented in this assignment but this propose an interesting 
+follow-up project to deepen the analysis.
 
 
- Monthly L/S decile (test 2015-01-30 -> 2024-11-29, net 10 bps + 1% borrow) 
+Monthly L/S decile (test 2015-01-30 -> 2024-11-29, net 10 bps + 1% borrow) 
 S&P500 Sharpe = +0.77
 
              test_IC sharpe_gross sharpe ann_return ann_vol max_drawdown

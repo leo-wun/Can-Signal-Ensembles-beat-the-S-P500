@@ -1,4 +1,5 @@
 """
+
 01 — EDA and Preprocessing pipeline  (converted from 01-02_EDA_preprocessing.ipynb)
 
 Steps performed:
@@ -16,6 +17,7 @@ Prerequisites:
     data/raw/daily_crsp_raw.parquet   (created by load_crsp_polars() in src/data_loading.py)
     data/raw/Chen_Zimmerman_monthly_raw.parquet  (created by load_cz_monthly())
     data/raw/vix_raw.parquet          (created by load_VIX() in src/data_loading.py)
+    
 """
 
 import sys
@@ -53,8 +55,17 @@ pd.set_option("display.float_format", "{:.4f}".format)
 
 # Helpers
 
-def rank_ic_table(feat: pd.DataFrame, cols: list[str], target: str = "target") -> pd.DataFrame:
-    """Mean Spearman rank IC, t-stat and IC>0% for each signal column."""
+def rank_ic_table(
+    feat: pd.DataFrame,
+    cols: list[str], 
+    target: str = "target"
+) -> pd.DataFrame:
+    
+    """
+    
+    Mean Spearman rank IC, t-stat and IC>0% for each signal column.
+    
+    """
     rows = []
     for col in cols:
         sub = feat[["date", col, target]].dropna()
@@ -79,12 +90,15 @@ def rank_ic_table(feat: pd.DataFrame, cols: list[str], target: str = "target") -
                 "IC>0_pct": (ic_ts > 0).mean(),
             }
         )
+        
     return pd.DataFrame(rows).set_index("feature")
 
 
 # Step 1-4: Pipeline
 
-def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
+def run_pipeline(
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    
     """
     Run the full preprocessing and feature-engineering pipeline.
     Returns (crsp, feat, feat_raw) as pandas DataFrames.
@@ -93,6 +107,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     VIX processing is skipped gracefully if vix_raw.parquet does not exist
     (it requires a prior WRDS pull via src/data_loading.load_VIX).
     """
+    
     # 1 Bootstrap CRSP raw parquet from CSV if needed
     if not config.CRSP_PATH_RAW.exists():
         print("  CRSP raw parquet not found — loading from CSV (this may take a moment)...")
@@ -152,7 +167,10 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 # 5 EDA Plots
 
-def plot_return_distribution(crsp: pd.DataFrame) -> None:
+def plot_return_distribution(
+    crsp: pd.DataFrame
+) -> None:
+    
     print("\nPlot: return distribution")
     ret = crsp["ret"]
     fig, axes = plt.subplots(1, 2, figsize=(13, 4))
@@ -178,7 +196,10 @@ def plot_return_distribution(crsp: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_universe_size(crsp: pd.DataFrame) -> None:
+def plot_universe_size(
+    crsp: pd.DataFrame
+) -> None:
+    
     print("Plot: universe size over time")
     monthly = crsp.set_index("date").resample("ME")["PERMNO"].nunique()
     obs_per_stock = crsp.groupby("PERMNO").size()
@@ -204,7 +225,10 @@ def plot_universe_size(crsp: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_cumulative_returns(crsp: pd.DataFrame) -> None:
+def plot_cumulative_returns(
+    crsp: pd.DataFrame
+) -> None:
+    
     print("Plot: cumulative returns")
     daily = crsp.groupby("date").agg(
         ew_ret=("ret", "mean"),
@@ -229,7 +253,10 @@ def plot_cumulative_returns(crsp: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_feature_distributions(feat_raw: pd.DataFrame) -> None:
+def plot_feature_distributions(
+    feat_raw: pd.DataFrame
+) -> None:
+    
     print("Plot: feature distributions")
     groups = {
         "Short-term reversal":   ["log_reversal_1d"],
@@ -265,7 +292,11 @@ def plot_feature_distributions(feat_raw: pd.DataFrame) -> None:
         plt.close()
 
 
-def plot_feature_correlations(feat_raw: pd.DataFrame) -> None:
+def plot_feature_correlations(
+    feat_raw: pd.DataFrame
+) -> None:
+    
+    
     print("Plot: feature Spearman correlation matrix")
     raw_for_corr = [
         c for c in feat_raw.columns
@@ -287,7 +318,12 @@ def plot_feature_correlations(feat_raw: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_ic_analysis(feat: pd.DataFrame, cs_cols: list[str]) -> None:
+def plot_ic_analysis(
+    feat: pd.DataFrame, 
+    cs_cols: list[str]
+) -> None:
+    
+    
     print("Plot: rank IC analysis")
     ic = rank_ic_table(feat, cs_cols)
     print(ic.to_string(float_format=lambda x: f"{x:.4f}"))
@@ -363,7 +399,10 @@ def plot_ic_analysis(feat: pd.DataFrame, cs_cols: list[str]) -> None:
     plt.close()
 
 
-def plot_vix_analysis(feat: pd.DataFrame) -> None:
+def plot_vix_analysis(
+    feat: pd.DataFrame
+) -> None:
+    
     vix_path = config.VIX_PATH_CLEAN
     if not vix_path.exists():
         print("VIX processed file not found — skipping VIX plots")
@@ -403,7 +442,10 @@ def plot_vix_analysis(feat: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_cz_analysis(crsp: pd.DataFrame) -> None:
+def plot_cz_analysis(
+    crsp: pd.DataFrame
+) -> None:
+    
     cz_path = config.CZ_PATH_CLEAN
     if not cz_path.exists():
         print("CZ processed file not found — skipping CZ plots")
@@ -453,7 +495,10 @@ def plot_cz_analysis(crsp: pd.DataFrame) -> None:
     plt.close()
 
 
-def plot_train_val_test_split(feat: pd.DataFrame) -> None:
+def plot_train_val_test_split(
+    feat: pd.DataFrame
+) -> None:
+    
     print("Plot: train / val / test split")
     splits = generate_date_split(feat, df_to_join=[], date_col="date",
                                  train_split=0.70, val_split=0.15)
@@ -475,7 +520,9 @@ def plot_train_val_test_split(feat: pd.DataFrame) -> None:
 
 
 
-def main() -> None:
+def main(
+) -> None:
+    
     # ---- Pipeline ----
     crsp, feat, feat_raw = run_pipeline()
 
