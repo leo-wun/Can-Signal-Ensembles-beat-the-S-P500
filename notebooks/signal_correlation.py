@@ -1,13 +1,15 @@
 """
+
 Cross-sectional correlation between the stock-level signals.
 
 For each date we compute the Pearson correlation matrix of the signal values
 across stocks, then average over all dates. The signals are already
 cross-sectionally rank-normalised, so this is effectively an average rank
 correlation. It answers: how much *distinct* information do the 14 signals
-carry? Two highly correlated signals are redundant — the meta-model would see
+carry? Two highly correlated signals are redundant ; the meta-model would see
 fewer effective inputs than it appears, and the ensemble gains nothing from
 the pair.
+
 """
 
 import sys
@@ -23,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config
 from ic_analysis import FEATURE_COLS, DATE
 
+
+# Set Global Variable
 MIN_STOCKS = 100 
 
 # Display order grouped by construction family.
@@ -35,29 +39,44 @@ ORDER = [
 ]
 
 
-def avg_cross_sectional_corr(df: pd.DataFrame) -> pd.DataFrame:
-    """Average over dates of the per-date cross-sectional correlation matrix."""
+def avg_cross_sectional_corr(
+    df: pd.DataFrame
+) -> pd.DataFrame:
+    
+    """
+    
+    Average over dates of the per-date cross-sectional correlation matrix.
+    
+    """
+    
     sizes = df.groupby(DATE).size()
     keep = sizes[sizes >= MIN_STOCKS].index
     df = df[df[DATE].isin(keep)]
     corr_by_date = df.groupby(DATE)[FEATURE_COLS].corr()
     avg = corr_by_date.groupby(level=1).mean()
+    
     return avg.loc[ORDER, ORDER]
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get the data
     df = pd.read_parquet(config.FEATURES_PATH_CLEAN, columns=[DATE] + FEATURE_COLS)
     df[DATE] = pd.to_datetime(df[DATE])
     print(f"Loaded {len(df):,} rows | {df[DATE].nunique():,} dates")
 
+    # Get and display the average cross-sectional correlation
     corr = avg_cross_sectional_corr(df)
-    print(f"\n=== Average cross-sectional correlation (dates with >= {MIN_STOCKS} stocks) ===")
+    print(f"\n Average cross-sectional correlation (dates with >= {MIN_STOCKS} stocks) ")
     print(corr.to_string(float_format=lambda x: f"{x:+.2f}"))
 
+    # Get and display high correlation
     off = corr.where(~np.eye(len(corr), dtype=bool))
-    print("\n=== Max |correlation| with any other signal (redundancy flag) ===")
+    print("\n Max |correlation| with any other signal (redundancy flag) ")
     print(off.abs().max().sort_values(ascending=False).to_string(float_format=lambda x: f"{x:.2f}"))
 
+    # Create and save graph
     fig, ax = plt.subplots(figsize=(10, 8.5))
     sns.heatmap(corr, annot=True, fmt="+.2f", cmap="RdBu_r", center=0,
                 vmin=-1, vmax=1, square=True, cbar_kws={"shrink": 0.8},
@@ -70,3 +89,23 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+"""
+
+Commentary on "signal_correlation_matrix.png"
+
+
+The graph shows that the volatility weighted momentum are not bringing extra information as their correlation
+with the momentum itself is above 0.90. We can drop thos features.
+
+Volatilies on different rolling windows are also incredibly intercorrelated and it may only be useful to use one. The
+window size may remain an hyperparameters to finetune later.
+
+"""
+
+    
+    
+    
+    

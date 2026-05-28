@@ -1,4 +1,5 @@
 """
+
 Turnover / rebalancing-frequency experiment.
 
 v1 showed the gross edge is real but ~81%/yr transaction cost — from near-full
@@ -12,6 +13,7 @@ signals — turnover is a property of the signal inputs, not of the combiner, so
 the cost story is identical to XGBoost's. XGBoost can be layered back onto the
 winning cell afterwards. Same test window, cost model and decile construction
 as v1, so the (full, daily) cell reproduces v1's equal-weight result.
+
 """
 
 import sys
@@ -26,6 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 from src.backtest import CostModel, held_weights, run_backtest, performance_metrics
 
+
+# Set Global Variable
 SIGNALS = {
     "reversal": ("log_reversal_1d", -1.0),
     "lowvol":   ("vol_63d", -1.0),
@@ -40,7 +44,10 @@ FREQS = {"daily": 1, "weekly": 5, "monthly": 21}
 VAL_END = pd.Timestamp(config.VAL_END)
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get data
     raw = [c for c, _ in SIGNALS.values()]
     df = pd.read_parquet(config.FEATURES_PATH_CLEAN,
                          columns=["date", "PERMNO", "ret"] + raw)
@@ -50,19 +57,24 @@ def main() -> None:
         df[name] = sign * df[col].astype("float64")
     df = df.dropna(subset=list(SIGNALS) + ["ret"])
     df = df[df["date"] > VAL_END]                       # test window, as in v1
+    
+    # Display date range
     print(f"test window: {df['date'].min().date()} -> {df['date'].max().date()} "
           f"({df['date'].nunique()} days)")
 
+    # Get returns and initialize cost model
     df = df.set_index(["date", "PERMNO"]).sort_index()
     returns = df["ret"]
     dates = returns.index.get_level_values("date").unique().sort_values()
     cost = CostModel(trading_cost=0.001, borrow_cost_annual=0.01)
 
+    # Get benchmark data (SP500)
     gspc = pd.read_parquet(config.GSPC_PATH_CLEAN)
     gspc["date"] = pd.to_datetime(gspc["date"])
     spx = gspc.set_index("date")["sprtrn"].reindex(dates).fillna(0.0)
     spx_sharpe = performance_metrics(spx)["sharpe"]
 
+    # Backtest loop
     net, gross, anncost = {}, {}, {}
     for mix_name, cols in MIXES.items():
         signal = df[cols].mean(axis=1)
@@ -73,19 +85,25 @@ def main() -> None:
             gross[(mix_name, freq_name)] = performance_metrics(bt["gross_return"])["sharpe"]
             anncost[(mix_name, freq_name)] = bt["cost"].mean() * 252
 
-    def grid(d: dict) -> pd.DataFrame:
+    def grid(
+        d: dict
+    ) -> pd.DataFrame:
+        
         return pd.DataFrame([[d[(m, f)] for f in FREQS] for m in MIXES],
                             index=list(MIXES), columns=list(FREQS))
 
+
+    # Display Results
     net_g, gross_g, cost_g = grid(net), grid(gross), grid(anncost)
     print(f"\nS&P500 reference Sharpe: {spx_sharpe:+.2f}\n")
-    print("=== NET Sharpe (net of costs) ===")
+    print(" NET Sharpe (net of costs) ")
     print(net_g.to_string(float_format=lambda x: f"{x:+.2f}"))
-    print("\n=== GROSS Sharpe ===")
+    print("\n GROSS Sharpe ")
     print(gross_g.to_string(float_format=lambda x: f"{x:+.2f}"))
-    print("\n=== Annualised transaction cost ===")
+    print("\n Annualised transaction cost ")
     print(cost_g.to_string(float_format=lambda x: f"{x:.1%}"))
 
+    # Create and save graph
     fig, ax = plt.subplots(figsize=(7, 4.5))
     sns.heatmap(net_g, annot=True, fmt="+.2f", cmap="RdBu_r", center=0,
                 ax=ax, cbar_kws={"label": "net Sharpe"})
@@ -98,3 +116,35 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+"""
+
+Commentary on "turnover_experiment.png"
+
+We observe that reversal achieve an optimal net Sharpe for weekly rebalance.
+
+
+
+S&P500 reference Sharpe: +0.76
+
+ NET Sharpe (net of costs) 
+               daily  weekly  monthly
+full           -1.52   -0.37    -0.56
+no_reversal    -0.81   -0.67    -0.60
+reversal_only  -1.05   +1.00    +0.23
+
+ GROSS Sharpe 
+               daily  weekly  monthly
+full           +0.71   +0.16    -0.39
+no_reversal    -0.65   -0.58    -0.53
+reversal_only  +4.01   +2.12    +0.53
+
+ Annualised transaction cost 
+               daily  weekly  monthly
+full           62.9%   13.3%     4.1%
+no_reversal     6.2%    3.4%     2.2%
+reversal_only  84.8%   17.8%     5.0%
+
+"""

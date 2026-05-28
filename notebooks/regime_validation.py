@@ -207,6 +207,13 @@ if __name__ == "__main__":
 
 Commentary 
 
+Part 2 shows that the VIX is a very strong predictor of future realized volatility (21 days).
+Part 1 and 3 shows that the VIX and the Chen-Zimmerman dataset seem to have no prediction power
+on the market returns (at least not linear).
+Part 4 shows an interesting results : best sharpe ratio of the market is reached on Low Vix regime. 
+
+Without going to deep in the analysis, those results shows us that using the VIX as an estimator for 
+the volatility/indicator of volatility is a strong tool that we could add to our analysis.
 
 
 Regime layer validation 
