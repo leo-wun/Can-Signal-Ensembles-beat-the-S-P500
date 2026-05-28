@@ -1,6 +1,6 @@
 """
 
-Validation of the regime layer (VIX + Chen-Zimmerman factors).
+Validation of the regime layer (VIX).
 
 These signals are time series (one value per date), not cross-sectional
 stock-pickers. The question is whether they have *market-timing* power:
@@ -156,31 +156,8 @@ def main(
     print("\n Part 2: VIX -> market VOLATILITY (sanity check / robust use) ")
     report(df_vix, "rvol_21d", ["vix"], 42, "next-21d realised vol ~ VIX level")
 
-    # Part 3: CZ factors -> market return (LassoCV, monthly obs)
-    print("\n Part 3: CZ factors -> next-21d market RETURN (LassoCV, monthly) ")
-    monthly = df_cz.groupby(df_cz.index.to_period("M")).tail(1)
-    d = monthly[["fwd_21d"] + cz_cols].dropna().astype("float64")
-    tr = d.index <= SPLIT
-    
-    # Scale data and initialize, train, predict a LassoCV model
-    sc = StandardScaler().fit(d.loc[tr, cz_cols])
-    Xtr, Xte = sc.transform(d.loc[tr, cz_cols]), sc.transform(d.loc[~tr, cz_cols])
-    ytr, yte = d.loc[tr, "fwd_21d"].values, d.loc[~tr, "fwd_21d"].values
-    m = LassoCV(cv=5, n_jobs=1, max_iter=50000, random_state=0).fit(Xtr, ytr)
-    r2_is = m.score(Xtr, ytr)
-    pred = m.predict(Xte)
-    r2_oos = 1.0 - ((yte - pred) ** 2).sum() / ((yte - ytr.mean()) ** 2).sum()
-    nz = pd.Series(m.coef_, index=cz_cols)
-    nz = nz[nz != 0].sort_values(key=abs, ascending=False)
-    
-    # Display In-sample and OOS R2
-    print(f"  monthly obs: {tr.sum()} train / {(~tr).sum()} test   alpha={m.alpha_:.2e}")
-    print(f"  in-sample R2 = {r2_is:+.4f}    OOS R2 = {r2_oos:+.4f}")
-    print(f"  non-zero factors = {len(nz)}/{len(cz_cols)}"
-          + (f"  | top: {', '.join(nz.index[:6])}" if len(nz) else ""))
-
-    # Part 4: VIX regime table
-    print("\n Part 4: VIX regime table (terciles of VIX level) ")
+    # Part 3: VIX regime table
+    print("\n Part 3: VIX regime table (terciles of VIX level) ")
     reg = df_vix.dropna(subset=["fwd_21d", "rvol_21d"]).copy()
     reg["regime"] = pd.qcut(reg["vix"], 3, labels=["Low VIX", "Mid VIX", "High VIX"])
     g = reg.groupby("regime", observed=True)
@@ -202,13 +179,12 @@ if __name__ == "__main__":
 
 
 
-
 """
 
 Commentary 
 
 Part 2 shows that the VIX is a very strong predictor of future realized volatility (21 days).
-Part 1 and 3 shows that the VIX and the Chen-Zimmerman dataset seem to have no prediction power
+Part 1 shows that the VIX seems to have no prediction power
 on the market returns (at least not linear).
 Part 4 shows an interesting results : best sharpe ratio of the market is reached on Low Vix regime. 
 
@@ -216,7 +192,6 @@ Without going to deep in the analysis, those results shows us that using the VIX
 the volatility/indicator of volatility is a strong tool that we could add to our analysis.
 
 
-Regime layer validation 
 VIX sample : 2000-01-03 -> 2024-12-31 (6289 trading days)
 CZ  sample : 2000-01-03 -> 2020-11-30
 
@@ -245,12 +220,7 @@ in-sample R2 = +0.00467,    OOS R2 = -0.00690
     vix            beta=+0.91508   HAC_t=+13.06
 in-sample R2 = +0.53287,    OOS R2 = +0.41417
 
- Part 3: CZ factors -> next-21d market RETURN (LassoCV, monthly) 
-  monthly obs: 192 train / 59 test   alpha=1.30e-02
-  in-sample R2 = +0.0000    OOS R2 = +0.0000
-  non-zero factors = 0/54
-
- Part 4: VIX regime table (terciles of VIX level) 
+ Part 3: VIX regime table (terciles of VIX level) 
           n_days   pct ann_return avg_fwd_vol return/vol
 regime                                                  
 Low VIX     2090 33.3%     +5.89%      10.48%      +0.56
