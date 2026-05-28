@@ -7,7 +7,7 @@ An end-to-end empirical study of cross-sectional return predictability in the U.
 
 ## Links
 
-- **GitHub repository:** `https://github.com/DarioFrey/ML_For_Finance_Project--DarioFrey-344524-LeoWunderli-329314` *(replace with the actual private repo URL; invite `DjoFE2021`)*
+- **GitHub repository:** `https://github.com/leo-wun/ML-For-Finance-Project-LeoWunderli-329314-DarioFrey-344524`, invite `DjoFE2021`
 - **Raw data archive (zipped):** `https://drive.google.com/drive/folders/<RAW-DATA-ARCHIVE-PLACEHOLDER>` — a single zip of the raw inputs (Daily/Monthly CRSP, Compustat, Chen–Zimmermann, JKP) so the pipeline can be reproduced **without** re-downloading from WRDS/CRSP. Unzip into `data/raw/`.
 
 > Compliance note: the headline monthly result uses only course-provided datasets (CRSP + Compustat, merged via the endorsed CCM table). VIX and CRSP market capitalisation are supplementary inputs used **only** for the robustness analyses (daily liquidity filter, low-vol, regime tables), as disclosed in §2 of the report.

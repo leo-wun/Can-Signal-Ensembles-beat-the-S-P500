@@ -68,7 +68,6 @@ def polars_features(
     vol_exprs = [
         (
             pl.col(value_col)
-            .shift(1)
             .rolling_std(window_size=window)
         )
         .shift(shift_days)
@@ -82,7 +81,7 @@ def polars_features(
         (
             (
                 (pl.col(value_col).log1p().rolling_sum(window_size=w).exp() - 1)
-                / pl.col(value_col).shift(1).rolling_std(window_size=w)
+                / pl.col(value_col).rolling_std(window_size=w)
             )
             .shift(shift_days)
             .over("PERMNO")

@@ -3,7 +3,7 @@ name = "ml-for-finance-project-leowunderli-329314-dariofrey-344524"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Dado0",email = "dariofreyfernand@gmai.com"}
+    {name = "Dado0",email = "dariofreyfernand@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.13,<3.15"

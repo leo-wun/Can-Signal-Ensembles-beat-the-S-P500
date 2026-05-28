@@ -18,9 +18,8 @@ def clean_crsp(path = config.CRSP_PATH_RAW) -> pd.DataFrame:
     - Cap extreme returns at ±300% (data errors / delistings)
     """
     df = pl.read_parquet(path)
-    bad_permnos = (df.group_by("PERMNO").agg(pl.col('ret').is_null().any().alias('has_null')).filter(pl.col('has_null')).select('PERMNO').to_series().to_list())
+    df = df.drop_nulls('ret')
 
-    df = df.filter(~pl.col('PERMNO').is_in(bad_permnos))
     df = df.filter(
         pl.col('date').is_between(
             pl.lit(config.START_DATE).str.to_date(),
