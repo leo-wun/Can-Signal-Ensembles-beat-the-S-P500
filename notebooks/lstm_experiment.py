@@ -22,6 +22,8 @@ import config
 from src.backtest import CostModel, held_weights, run_backtest, performance_metrics
 from src.models.lstm_model import train_lstm
 
+
+# Set Global Variable
 SEQ_LEN = 20
 TRAIN_SAMPLE = 200_000
 VAL_SAMPLE = 200_000

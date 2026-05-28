@@ -1,7 +1,7 @@
 """
 Step 3c of the monthly study: cost robustness.
 
-The bottom-500 XGBoost strategy delivered net Sharpe +1.12 at 10 bps trading
+The bottom-500 XGBoost strategy delivered positive net Sharpe at 10 bps trading
 cost. This script sweeps the round-trip trading cost over
 {0, 10, 25, 50, 100, 200} bps on the most relevant universes (full,
 bottom 1000, bottom 500) and the three ML models (Lasso, XGBoost, MLP) to
@@ -33,6 +33,8 @@ from src.models.mlp_model import train_mlp
 from src.monthly_features import FEATURE_COLS as TECH_COLS
 from src.compustat_features import FUNDAMENTAL_COLS
 
+
+# Set Global Variable
 FEATURES = TECH_COLS + FUNDAMENTAL_COLS
 START = pd.Timestamp("1980-01-01")
 TRAIN_END = pd.Timestamp("2010-12-31")
@@ -46,43 +48,71 @@ COSTS_BPS = [0, 10, 25, 50, 100, 200]
 LASSO_CV_SAMPLE = 200_000
 
 
-def prepare(df_raw, side, N):
+def prepare(
+    df_raw,
+    side,
+    N
+
+):
+    
+    # Get full universe or bottom N
     df = df_raw.copy()
     if N is not None:
         df = df.dropna(subset=["size_proxy"])
         ascending = (side == "bottom")
         rank = df.groupby("date")["size_proxy"].rank(method="first", ascending=ascending)
         df = df[rank <= N]
+        
+    # Prepare fundamental features of the compustat dataset
     for c in FUNDAMENTAL_COLS:
         df[c] = df[c].fillna(df.groupby("date")[c].transform("median"))
         df[c] = df[c].fillna(0.0)
+    
+    # Rank features
     for c in FEATURES:
         df[c] = df.groupby("date")[c].rank(pct=True) - 0.5
+        
+    # Rank target column
     df["yrank"] = df.groupby("date")["target"].rank(pct=True)
+    
     return df
 
+
 # Model training and prediction
-def train_predict(df, name):
+def train_predict(
+    df, 
+    name
+):
+    
+    # Build train, validation and test set
     train = df[df["date"] <= TRAIN_END]
     val = df[(df["date"] > TRAIN_END) & (df["date"] <= VAL_END)]
     test = df[df["date"] > VAL_END].copy()
+    
+    # Display sizes
     print(f"  {name}: train {len(train):,} | val {len(val):,} | test {len(test):,}")
 
+    # Convert to numpy with datatype
     Xtr = train[FEATURES].to_numpy("float32"); ytr = train["yrank"].to_numpy("float32")
     Xva = val[FEATURES].to_numpy("float32");   yva = val["yrank"].to_numpy("float32")
     Xte = test[FEATURES].to_numpy("float32")
 
+    # Set seed
     rng = np.random.default_rng(0)
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
+    
+    # Initialize, train and predict LassoCV
     lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
     test["pred_lasso"] = lcv.predict(Xte)
 
+    # Initialize, train and predict XGboost regressor
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
                        subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
     xgb.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     test["pred_xgb"] = xgb.predict(Xte)
 
+    # Initialize, train and predict MLP with scaling
     sc = StandardScaler().fit(Xtr)
     mlp, _ = train_mlp(sc.transform(Xtr).astype("float32"), ytr,
                        sc.transform(Xva).astype("float32"), yva,
@@ -92,21 +122,29 @@ def train_predict(df, name):
         dev = next(mlp.parameters()).device
         test["pred_mlp"] = mlp(torch.tensor(sc.transform(Xte).astype("float32"),
                                              device=dev)).cpu().numpy()
+        
     return test
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get data
     df_raw = pd.read_parquet(config.MONTHLY_DATASET_PATH)
     df_raw["date"] = pd.to_datetime(df_raw["date"])
     df_raw = df_raw[df_raw["date"] >= START]
     df_raw = df_raw.dropna(subset=TECH_COLS + ["target"])
 
+    # Get benchmark data (SP500)
     sp_df = df_raw[df_raw["date"] > VAL_END].drop_duplicates("date").set_index("date")
     sp = sp_df["sprtrn"].sort_index().shift(-1).dropna()
     sp_sharpe = performance_metrics(sp, periods_per_year=12)["sharpe"]
     print(f"S&P500 reference Sharpe = {sp_sharpe:+.2f}\n")
 
+    # Loop on Universes and model to get results 
     sharpe_records, annret_records = {}, {}
+    
+    # Training and prediction
     for name, side, N in UNIVERSES:
         print(f"\n--- universe '{name}' ---")
         df = prepare(df_raw, side, N)
@@ -115,6 +153,7 @@ def main() -> None:
         returns = test_idx["target"]
         dates = returns.index.get_level_values("date").unique().sort_values()
 
+        # Backtest with cost model initialization
         for model_name, pred_col in [("Lasso", "pred_lasso"),
                                      ("XGBoost", "pred_xgb"),
                                      ("MLP", "pred_mlp")]:
@@ -127,6 +166,7 @@ def main() -> None:
                 sharpe_records[(name, model_name, bps)] = m["sharpe"]
                 annret_records[(name, model_name, bps)] = m["ann_return"]
 
+    # Generate table of results
     idx = pd.MultiIndex.from_tuples(
         [(u, m) for u, _, _ in UNIVERSES for m in ["Lasso", "XGBoost", "MLP"]],
         names=["universe", "model"])
@@ -137,13 +177,14 @@ def main() -> None:
         {f"{bps} bps": [annret_records[(u, m, bps)] for u, m in idx]
          for bps in COSTS_BPS}, index=idx)
 
-    print(f"\n=== NET SHARPE by trading cost (S&P500 ref = {sp_sharpe:+.2f}) ===")
+    # Display results
+    print(f"\n NET SHARPE by trading cost (S&P500 ref = {sp_sharpe:+.2f}) ")
     print(sharpe_table.to_string(float_format=lambda x: f"{x:+.2f}"))
-    print(f"\n=== ANN RETURN by trading cost ===")
+    print(f"\n ANN RETURN by trading cost ")
     print(annret_table.to_string(float_format=lambda x: f"{x:+.1%}"))
 
-    # breakeven cost vs S&P for XGBoost
-    print(f"\n--- breakeven cost vs S&P (Sharpe={sp_sharpe:+.2f}), XGBoost ---")
+    # Breakeven cost vs S&P for XGBoost
+    print(f"\n breakeven cost vs S&P (Sharpe={sp_sharpe:+.2f}), XGBoost ")
     bps_arr = np.array(COSTS_BPS, dtype=float)
     for u, _, _ in UNIVERSES:
         sharpes = np.array([sharpe_records[(u, "XGBoost", bps)] for bps in COSTS_BPS])
@@ -159,7 +200,7 @@ def main() -> None:
             print(f"  {u}: breakeven ~{x:.0f} bps")
 
 
-    # Display
+    # Create and save graph
     fig, ax = plt.subplots(figsize=(9, 5.5))
     colors = {"full": "k", "bottom 1000": "tab:purple", "bottom 500": "tab:blue"}
     for u, _, _ in UNIVERSES:
@@ -180,3 +221,20 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
+    
+"""
+
+Commentary on "monthly_cost_robustness.png"
+
+Breakeven point for the XGboost on the bottom 500 is reached at around 50bps which is in the range 
+50-100 bps estimated from litterature for Small-Cap. 
+It is important to note that the code does not include other source of cost like 
+(1) Bid-ask spread
+(2) Price impact
+
+Which are notably higher on small-cap.
+This mean that for this strategy to beat the SP500, all costs should hit below 50bps. 
+
+"""
+

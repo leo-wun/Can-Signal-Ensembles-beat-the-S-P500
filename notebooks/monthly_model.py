@@ -28,6 +28,8 @@ from src.models.mlp_model import train_mlp
 from src.monthly_features import FEATURE_COLS as TECH_COLS
 from src.compustat_features import FUNDAMENTAL_COLS
 
+
+# Set Global Variable
 FEATURES = TECH_COLS + FUNDAMENTAL_COLS
 START = pd.Timestamp("1980-01-01")
 TRAIN_END = pd.Timestamp("2010-12-31")
@@ -35,23 +37,28 @@ VAL_END = pd.Timestamp("2014-12-31")
 LASSO_CV_SAMPLE = 200_000
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get data
     df = pd.read_parquet(config.MONTHLY_DATASET_PATH)
     df["date"] = pd.to_datetime(df["date"])
     df = df[df["date"] >= START]
     df = df.dropna(subset=TECH_COLS + ["target"])
 
-    # cross-sectional median imputation per date for the fundamentals
+    # Cross-sectional median imputation per date for the fundamentals
     for c in FUNDAMENTAL_COLS:
         df[c] = df[c].fillna(df.groupby("date")[c].transform("median"))
         df[c] = df[c].fillna(0.0)
 
-    # rank-normalise features cross-sectionally per date -> [-0.5, +0.5]
+    # Rank-normalise features cross-sectionally per date -> [-0.5, +0.5]
     for c in FEATURES:
         df[c] = df.groupby("date")[c].rank(pct=True) - 0.5
-    # target -> cross-sectional percentile rank per date (robust ML target)
+        
+    # Target -> cross-sectional percentile rank per date (robust ML target)
     df["yrank"] = df.groupby("date")["target"].rank(pct=True)
 
+    # Training, validation and test split
     train = df[df["date"] <= TRAIN_END]
     val = df[(df["date"] > TRAIN_END) & (df["date"] <= VAL_END)]
     test = df[df["date"] > VAL_END].copy()
@@ -59,15 +66,18 @@ def main() -> None:
           f"train {len(train):,} | val {len(val):,} | test {len(test):,}")
     print(f"test window: {test['date'].min().date()} -> {test['date'].max().date()}")
 
+    # Convert to numpy with datatype
     Xtr = train[FEATURES].to_numpy("float32")
     Xva = val[FEATURES].to_numpy("float32")
     Xte = test[FEATURES].to_numpy("float32")
     ytr = train["yrank"].to_numpy("float32")
     yva = val["yrank"].to_numpy("float32")
 
-    # Lasso
+    # Set seed 
     rng = np.random.default_rng(0)
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
+    
+    # Initialize, train and predict LassoCV
     lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
     test["pred_lasso"] = lcv.predict(Xte)
     print(f"\nLasso: alpha={lcv.alpha_:.2e} | "
@@ -76,7 +86,7 @@ def main() -> None:
     print("Lasso top coefficients:")
     print(coef.head(8).to_string(float_format=lambda x: f"{x:+.4f}"))
 
-    # XGBoost
+    # Initialize, train and predict XGboost regressor
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
                        subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
@@ -87,7 +97,7 @@ def main() -> None:
     print("XGBoost top feature importances:")
     print(fi.head(8).to_string(float_format=lambda x: f"{x:.3f}"))
 
-    # MLP (deep-learning model)
+    # Initialize, train and predict MLP with scaling
     sc = StandardScaler().fit(Xtr)
     mlp, val_mse = train_mlp(sc.transform(Xtr).astype("float32"), ytr,
                              sc.transform(Xva).astype("float32"), yva,
@@ -107,7 +117,10 @@ def main() -> None:
     print(corrs.sort_values(ascending=False).to_string(float_format=lambda x: f"{x:+.3f}"))
 
     # Evaluation
-    def mean_ic(col: str) -> float:
+    def mean_ic(
+        col: str
+    ) -> float:
+        
         return test.groupby("date").apply(
             lambda g: spearmanr(g[col], g["target"])[0],
             include_groups=False).mean()
@@ -115,13 +128,14 @@ def main() -> None:
     test_idx = test.set_index(["date", "PERMNO"]).sort_index()
     returns = test_idx["target"]              # next-month realised return
     dates = returns.index.get_level_values("date").unique().sort_values()
-    cost = CostModel(trading_cost=0.001, borrow_cost_annual=0.01, periods_per_year=12)
+    cost = CostModel(trading_cost=0.001, borrow_cost_annual=0.01, periods_per_year=12) # Initialize cost model
 
     # S&P 500 benchmark aligned to the strategy's holding period
     sp = (test.drop_duplicates("date").set_index("date")["sprtrn"]
               .sort_index().shift(-1).reindex(dates).fillna(0.0))
     sp_m = performance_metrics(sp, periods_per_year=12)
 
+    # Backtest loop 
     rows, bts = {}, {}
     for name, col in [("Lasso", "pred_lasso"), ("XGBoost", "pred_xgb"),
                       ("MLP", "pred_mlp"), ("Equal-weight", "pred_ew")]:
@@ -134,21 +148,24 @@ def main() -> None:
         bts[name] = bt
     rows["S&P500"] = sp_m
 
+    # Display results
     out = pd.DataFrame(rows).T[["test_IC", "sharpe_gross", "sharpe",
                                 "ann_return", "ann_vol", "max_drawdown"]]
-    print(f"\n=== Monthly L/S decile (test {test['date'].min().date()} -> "
-          f"{test['date'].max().date()}, net 10 bps + 1% borrow) ===")
+    print(f"\n Monthly L/S decile (test {test['date'].min().date()} -> "
+          f"{test['date'].max().date()}, net 10 bps + 1% borrow) ")
     print(f"S&P500 Sharpe = {sp_m['sharpe']:+.2f}\n")
     print(out.to_string(formatters={
         "test_IC": "{:+.4f}".format, "sharpe_gross": "{:+.2f}".format,
         "sharpe": "{:+.2f}".format, "ann_return": "{:+.2%}".format,
         "ann_vol": "{:.2%}".format, "max_drawdown": "{:.1%}".format}))
 
+    # Save results to .parquet
     pred_df = test[["date", "PERMNO", "target", "sprtrn",
                     "pred_lasso", "pred_xgb", "pred_mlp", "pred_ew"]]
     pred_df.to_parquet(config.MONTHLY_PREDICTIONS_PATH, index=False)
     print(f"\nsaved predictions -> {config.MONTHLY_PREDICTIONS_PATH}")
 
+    # Create and save graph
     fig, ax = plt.subplots(figsize=(11, 6))
     for name, bt in bts.items():
         ax.plot(bt.index, bt["equity"], lw=1.3, label=name)
@@ -165,3 +182,12 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+"""
+
+Commentary on "monthly_model_equity.png"
+
+
+
+"""

@@ -20,16 +20,21 @@ from src.monthly_features import FEATURE_COLS
 from src.compustat_features import (load_compustat, build_fundamental_features,
                                     FUNDAMENTAL_COLS)
 
+# Set Global Variable
 REPORTING_LAG_MONTHS = 4
 FAR_FUTURE = pd.Timestamp("2099-12-31")
 
 
-def main() -> None:
+def main(
+) -> None:
+      
+    # Get data  
     panel = pd.read_parquet(config.MONTHLY_PANEL_PATH)
     panel["date"] = pd.to_datetime(panel["date"])
     panel["PERMNO"] = panel["PERMNO"].astype("int64")
     print(f"panel: {len(panel):,} rows")
 
+    # Load Compustat dataset  
     cs = load_compustat(config.COMPUSTAT_PATH)
     cs["gvkey"] = pd.to_numeric(cs["gvkey"], errors="coerce").astype("Int64")
     cs = cs.dropna(subset=["gvkey"]).copy()
@@ -38,6 +43,7 @@ def main() -> None:
     fund = build_fundamental_features(cs)
     fund["gvkey"] = fund["gvkey"].astype("int64")
 
+    # Load ccm linktable  
     ccm = pd.read_parquet(config.CCM_LINKTABLE_PATH)
     ccm["linkdt"]    = pd.to_datetime(ccm["linkdt"])
     ccm["linkenddt"] = pd.to_datetime(ccm["linkenddt"]).fillna(FAR_FUTURE)
@@ -45,7 +51,7 @@ def main() -> None:
           f"{ccm['gvkey'].nunique():,} unique gvkey | "
           f"{ccm['lpermno'].nunique():,} unique PERMNO")
 
-    # attach the valid PERMNO to each (gvkey, datadate) using linkdt/linkenddt 
+    # Attach the valid PERMNO to each (gvkey, datadate) using linkdt/linkenddt 
     linked = fund.merge(
         ccm[["gvkey", "lpermno", "linkdt", "linkenddt"]], on="gvkey", how="inner")
     mask = (linked["datadate"] >= linked["linkdt"]) \
@@ -58,6 +64,7 @@ def main() -> None:
     print(f"Compustat after CCM link: {len(linked):,} rows | "
           f"{linked['PERMNO'].nunique():,} unique PERMNO")
 
+    # Merge datasets  
     panel = panel.sort_values("date")
     linked = linked.sort_values("available")
     merged = pd.merge_asof(
@@ -65,15 +72,19 @@ def main() -> None:
         linked[["PERMNO", "available", "size_proxy"] + FUNDAMENTAL_COLS],
         left_on="date", right_on="available", by="PERMNO", direction="backward")
 
+    # Select elements with existing values
     has_fund = merged[FUNDAMENTAL_COLS].notna().any(axis=1)
     usable = merged.dropna(subset=["target"] + FEATURE_COLS)
     rec = usable[usable["date"] >= "1980-01-01"]
+    
+    # Display information on the final merged dataset
     print(f"\nmerged: {len(merged):,} rows | fundamental match overall: {has_fund.mean():.1%}")
     print(f"usable rows (target + technical features) >= 1980: {len(rec):,} | "
           f"with fundamentals: {rec[FUNDAMENTAL_COLS].notna().any(axis=1).mean():.1%}")
     print("\nfundamental coverage (non-null %, all merged rows):")
     print((merged[FUNDAMENTAL_COLS].notna().mean() * 100).round(1).to_string())
 
+    # Save the dataset
     merged = merged.drop(columns=["available"])
     merged.to_parquet(config.MONTHLY_DATASET_PATH, index=False)
     print(f"\nsaved -> {config.MONTHLY_DATASET_PATH}  ({len(merged):,} rows | "
