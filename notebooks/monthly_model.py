@@ -78,7 +78,7 @@ def main(
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
     
     # Initialize, train and predict LassoCV
-    lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
+    lcv = LassoCV(cv=5, n_jobs=1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
     test["pred_lasso"] = lcv.predict(Xte)
     print(f"\nLasso: alpha={lcv.alpha_:.2e} | "
           f"non-zero coefs={(lcv.coef_ != 0).sum()}/{len(FEATURES)}")
@@ -88,7 +88,7 @@ def main(
 
     # Initialize, train and predict XGboost regressor
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
-                       subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
+                       subsample=0.8, colsample_bytree=0.8, n_jobs=1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
     xgb.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     test["pred_xgb"] = xgb.predict(Xte)
@@ -176,7 +176,7 @@ def main(
     ax.set_ylabel("equity (start = 1)")
     ax.legend()
     out_plot = config.PLOTS_DIR / "monthly_model_equity.png"
-    fig.savefig(out_plot, dpi=120, bbox_inches="tight")
+    fig.savefig(out_plot, dpi=120, bbox_inches="tight") 
     print(f"saved equity curves -> {out_plot}")
 
 
@@ -188,6 +188,20 @@ if __name__ == "__main__":
 
 Commentary on "monthly_model_equity.png"
 
+
+
+
+
+
+ Monthly L/S decile (test 2015-01-30 -> 2024-11-29, net 10 bps + 1% borrow) 
+S&P500 Sharpe = +0.77
+
+             test_IC sharpe_gross sharpe ann_return ann_vol max_drawdown
+Lasso        +0.0849        +0.34  +0.20     +5.18%  25.31%       -71.5%
+XGBoost      +0.0948        +0.55  +0.41    +10.40%  25.08%       -65.6%
+MLP          +0.0892        +0.52  +0.37     +8.90%  23.96%       -67.0%
+Equal-weight +0.0792        +0.26  +0.17     +3.84%  22.80%       -68.5%
+S&P500           NaN          NaN  +0.77    +11.80%  15.31%       -24.8%
 
 
 """
