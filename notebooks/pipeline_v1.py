@@ -55,7 +55,7 @@ def main() -> None:
     print(f"train {len(train):,} | val {len(val):,} | test {len(test):,}")
     print(f"test window: {test['date'].min().date()} -> {test['date'].max().date()}")
 
-    # meta-model target: cross-sectional percentile rank of next-day return
+    # cross-sectional percentile rank of next-day return
     y_train = train.groupby("date")["target"].rank(pct=True)
     y_val = val.groupby("date")["target"].rank(pct=True)
 

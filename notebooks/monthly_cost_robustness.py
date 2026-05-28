@@ -61,7 +61,7 @@ def prepare(df_raw, side, N):
     df["yrank"] = df.groupby("date")["target"].rank(pct=True)
     return df
 
-
+# Model training and prediction
 def train_predict(df, name):
     train = df[df["date"] <= TRAIN_END]
     val = df[(df["date"] > TRAIN_END) & (df["date"] <= VAL_END)]
@@ -158,6 +158,8 @@ def main() -> None:
                 / (sharpes[i] - sharpes[i - 1]) * (bps_arr[i] - bps_arr[i - 1])
             print(f"  {u}: breakeven ~{x:.0f} bps")
 
+
+    # Display
     fig, ax = plt.subplots(figsize=(9, 5.5))
     colors = {"full": "k", "bottom 1000": "tab:purple", "bottom 500": "tab:blue"}
     for u, _, _ in UNIVERSES:

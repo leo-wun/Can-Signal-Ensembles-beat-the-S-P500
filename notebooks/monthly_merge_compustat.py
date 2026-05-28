@@ -45,7 +45,7 @@ def main() -> None:
           f"{ccm['gvkey'].nunique():,} unique gvkey | "
           f"{ccm['lpermno'].nunique():,} unique PERMNO")
 
-    # attach the valid PERMNO to each (gvkey, datadate) using linkdt/linkenddt
+    # attach the valid PERMNO to each (gvkey, datadate) using linkdt/linkenddt 
     linked = fund.merge(
         ccm[["gvkey", "lpermno", "linkdt", "linkenddt"]], on="gvkey", how="inner")
     mask = (linked["datadate"] >= linked["linkdt"]) \

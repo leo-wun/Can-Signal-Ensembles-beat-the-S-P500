@@ -19,11 +19,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling-script import (ic_analysis)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config
 from ic_analysis import FEATURE_COLS, DATE
 
-MIN_STOCKS = 100  # skip thin early dates (few stocks have long-window history)
+MIN_STOCKS = 100 
 
 # Display order grouped by construction family.
 ORDER = [

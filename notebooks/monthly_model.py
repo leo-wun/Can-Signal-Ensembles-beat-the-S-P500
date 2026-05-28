@@ -65,7 +65,7 @@ def main() -> None:
     ytr = train["yrank"].to_numpy("float32")
     yva = val["yrank"].to_numpy("float32")
 
-    # ── Lasso ─────────────────────────────────────────────────────────────────
+    # Lasso
     rng = np.random.default_rng(0)
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
     lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
@@ -76,7 +76,7 @@ def main() -> None:
     print("Lasso top coefficients:")
     print(coef.head(8).to_string(float_format=lambda x: f"{x:+.4f}"))
 
-    # ── XGBoost ──────────────────────────────────────────────────────────────
+    # XGBoost
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
                        subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
@@ -87,7 +87,7 @@ def main() -> None:
     print("XGBoost top feature importances:")
     print(fi.head(8).to_string(float_format=lambda x: f"{x:.3f}"))
 
-    # ── MLP (deep-learning model) ────────────────────────────────────────────
+    # MLP (deep-learning model)
     sc = StandardScaler().fit(Xtr)
     mlp, val_mse = train_mlp(sc.transform(Xtr).astype("float32"), ytr,
                              sc.transform(Xva).astype("float32"), yva,
@@ -99,14 +99,14 @@ def main() -> None:
                                             device=dev)).cpu().numpy()
     print(f"\nMLP: best validation MSE={val_mse:.5f}")
 
-    # ── Equal-weight baseline (train-data sign-oriented) ─────────────────────
+    # Equal-weight baseline (train-data sign-oriented)
     corrs = train[FEATURES].corrwith(train["yrank"])
     signs = np.sign(corrs.values).astype("float32")
     test["pred_ew"] = (test[FEATURES].to_numpy("float32") * signs).mean(axis=1)
     print("\nFeature/target correlations on the training set (used to orient EW):")
     print(corrs.sort_values(ascending=False).to_string(float_format=lambda x: f"{x:+.3f}"))
 
-    # ── Evaluation ───────────────────────────────────────────────────────────
+    # Evaluation
     def mean_ic(col: str) -> float:
         return test.groupby("date").apply(
             lambda g: spearmanr(g[col], g["target"])[0],

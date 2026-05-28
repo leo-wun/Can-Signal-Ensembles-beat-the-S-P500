@@ -28,12 +28,12 @@ from src.backtest import CostModel, held_weights, run_backtest, performance_metr
 
 SIGNALS = {
     "reversal": ("log_reversal_1d", -1.0),
-    "lowvol":   ("vol_63d",         -1.0),
-    "momentum": ("mom_252d",        +1.0),
+    "lowvol":   ("vol_63d", -1.0),
+    "momentum": ("mom_252d", +1.0),
 }
 MIXES = {
-    "full":          ["reversal", "lowvol", "momentum"],
-    "no_reversal":   ["lowvol", "momentum"],
+    "full": ["reversal", "lowvol", "momentum"],
+    "no_reversal": ["lowvol", "momentum"],
     "reversal_only": ["reversal"],
 }
 FREQS = {"daily": 1, "weekly": 5, "monthly": 21}

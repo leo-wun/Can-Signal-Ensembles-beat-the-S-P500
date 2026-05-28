@@ -26,13 +26,13 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import matplotlib
-matplotlib.use("Agg")          # for figure saving
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
 from scipy.stats import spearmanr
 
-# Ensure UTF-8 console output on Windows (src/utils.py prints use --> arrows)
+# Ensure UTF-8 console output on Windows
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
@@ -51,7 +51,7 @@ plt.rcParams.update({"figure.dpi": 120, "axes.spines.top": False, "axes.spines.r
 pd.set_option("display.float_format", "{:.4f}".format)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Helpers
 
 def rank_ic_table(feat: pd.DataFrame, cols: list[str], target: str = "target") -> pd.DataFrame:
     """Mean Spearman rank IC, t-stat and IC>0% for each signal column."""
@@ -82,7 +82,7 @@ def rank_ic_table(feat: pd.DataFrame, cols: list[str], target: str = "target") -
     return pd.DataFrame(rows).set_index("feature")
 
 
-# ── Step 1-4: Pipeline ────────────────────────────────────────────────────────
+# Step 1-4: Pipeline
 
 def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -93,32 +93,32 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     VIX processing is skipped gracefully if vix_raw.parquet does not exist
     (it requires a prior WRDS pull via src/data_loading.load_VIX).
     """
-    # ── 1a. Bootstrap CRSP raw parquet from CSV if needed ────────────────────
+    # 1 Bootstrap CRSP raw parquet from CSV if needed
     if not config.CRSP_PATH_RAW.exists():
         print("  CRSP raw parquet not found — loading from CSV (this may take a moment)...")
-        load_crsp_polars()               # reads daily_crsp.csv --> CRSP_PATH_RAW
+        load_crsp_polars() # reads daily_crsp.csv --> CRSP_PATH_RAW
 
     print("=" * 60)
     print("Step 1: Clean CRSP daily returns")
     print("=" * 60)
-    crsp = clean_crsp()                  # reads CRSP_PATH_RAW, saves CRSP_PATH_CLEAN
+    crsp = clean_crsp() # reads CRSP_PATH_RAW, saves CRSP_PATH_CLEAN
     crsp["date"] = pd.to_datetime(crsp["date"])
     print(f"  Shape: {crsp.shape}  |  Stocks: {crsp['PERMNO'].nunique():,}  "
           f"|  Dates: {crsp['date'].nunique():,}")
 
-    # ── 2a. Bootstrap CZ raw parquet from CSV if needed ──────────────────────
+    # 2 Bootstrap CZ raw parquet from CSV if needed
     if not config.CZ_PATH_RAW.exists():
         print("  CZ raw parquet not found — loading from CSV...")
-        load_cz_monthly()                # reads Chen_Zimmerman_monthly.csv --> CZ_PATH_RAW
+        load_cz_monthly() # reads Chen_Zimmerman_monthly.csv --> CZ_PATH_RAW
 
     print("\n" + "=" * 60)
     print("Step 2: Clean Chen-Zimmermann monthly factors")
     print("=" * 60)
-    cz = clean_cz_monthly()              # reads CZ_PATH_RAW, saves CZ_PATH_CLEAN (date as index)
+    cz = clean_cz_monthly() # reads CZ_PATH_RAW, saves CZ_PATH_CLEAN (date as index)
     print(f"  Shape: {cz.shape}  |  Factors: {cz.shape[1]}  |  date as index: "
           f"{cz.index.name == 'date'}")
 
-    # ── 3a. VIX: skip gracefully if raw parquet is absent ────────────────────
+    # 3 VIX: skip if raw parquet is absent
     print("\n" + "=" * 60)
     print("Step 3: Clean VIX")
     print("=" * 60)
@@ -126,7 +126,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
         print("  vix_raw.parquet not found — skipping VIX processing.")
         print("  To enable: run src/data_loading.load_VIX() (requires WRDS access).")
     else:
-        _clean_vix()                     # reads VIX_PATH_RAW, saves VIX_PATH_CLEAN
+        _clean_vix() # reads VIX_PATH_RAW, saves VIX_PATH_CLEAN
 
     print("\n" + "=" * 60)
     print("Step 4: Build daily technical features (rank-normalised)")
@@ -150,7 +150,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     return crsp, feat, feat_raw
 
 
-# ── Step 5: EDA Plots ─────────────────────────────────────────────────────────
+# 5 EDA Plots
 
 def plot_return_distribution(crsp: pd.DataFrame) -> None:
     print("\nPlot: return distribution")
@@ -410,7 +410,7 @@ def plot_cz_analysis(crsp: pd.DataFrame) -> None:
         return
     print("Plot: Chen-Zimmermann factor analysis")
     cz = pd.read_parquet(cz_path)
-    if "date" not in cz.columns:          # date may be stored as a named index
+    if "date" not in cz.columns: # date may be stored as a named index
         cz = cz.reset_index()
     cz_cols = [c for c in cz.columns if c != "date"]
     cz["date"] = pd.to_datetime(cz["date"])
@@ -474,7 +474,6 @@ def plot_train_val_test_split(feat: pd.DataFrame) -> None:
     plt.close()
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     # ---- Pipeline ----

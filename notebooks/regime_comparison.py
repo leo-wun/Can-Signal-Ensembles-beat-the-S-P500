@@ -80,7 +80,7 @@ def main() -> None:
     liq["date"] = pd.to_datetime(liq["date"])
     liq["dlycap"] = liq["dlycap"].astype("float64")
     liq = liq.sort_values(["PERMNO", "date"])
-    liq["cap_lag"] = liq.groupby("PERMNO")["dlycap"].shift(1)       # no look-ahead
+    liq["cap_lag"] = liq.groupby("PERMNO")["dlycap"].shift(1) # no look-ahead
 
     results = {}
     for wname, (start, end) in WINDOWS.items():

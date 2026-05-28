@@ -23,12 +23,12 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 
-START = "2000-01-01"          # project window
-SPLIT = pd.Timestamp("2015-12-31")  # train <= SPLIT, test after
+START = "2000-01-01" # project window
+SPLIT = pd.Timestamp("2015-12-31") # train <= SPLIT
 
 
 def ols_hac(y: np.ndarray, X: np.ndarray, lags: int):
-    """OLS with Newey-West HAC covariance. X must already include an intercept."""
+    """OLS with HAC covariance. X must already include an intercept."""
     XtX_inv = np.linalg.inv(X.T @ X)
     beta = XtX_inv @ (X.T @ y)
     resid = y - X @ beta
@@ -56,6 +56,7 @@ def oos_r2(d: pd.DataFrame, target: str, predictors: list[str]) -> float:
 
 
 def report(df: pd.DataFrame, target: str, predictors: list[str], lags: int, label: str):
+    """"Report of HAC regression results and OOS R2."""
     d = df[[target] + predictors].dropna().astype("float64")
     y = d[target].values
     X = np.column_stack([np.ones(len(d))] + [d[p].values for p in predictors])
@@ -64,7 +65,7 @@ def report(df: pd.DataFrame, target: str, predictors: list[str], lags: int, labe
     names = ["const"] + predictors
     for nm, b, tt in zip(names, beta, t):
         print(f"    {nm:<14s} beta={b:+.5f}   HAC_t={tt:+.2f}")
-    print(f"    in-sample R2 = {r2:+.5f}    OOS R2 = {oos_r2(d, target, predictors):+.5f}")
+    print(f"in-sample R2 = {r2:+.5f},    OOS R2 = {oos_r2(d, target, predictors):+.5f}")
 
 
 def main() -> None:
@@ -76,14 +77,14 @@ def main() -> None:
     cz = pd.read_parquet(config.CZ_PATH_CLEAN)
     cz_cols = cz.columns.tolist()
 
-    # ── Forward market targets (log returns) ─────────────────────────────────
+    # Forward market targets (log returns)
     logret = np.log1p(gspc["sprtrn"])
     tgt = pd.DataFrame(index=gspc.index)
     tgt["fwd_1d"] = logret                                            # next day
     tgt["fwd_21d"] = logret.rolling(21).sum().shift(-20)              # next ~month
     tgt["rvol_21d"] = logret.rolling(21).std().shift(-20) * np.sqrt(252)
 
-    # ── VIX predictors ───────────────────────────────────────────────────────
+    # VIX predictors
     vfeat = pd.DataFrame(index=vix.index)
     vfeat["vix"] = vix["vix"]
     vfeat["vix_gap63"] = vix["vix"] / vix["vix_ma_63"] - 1
@@ -98,18 +99,18 @@ def main() -> None:
           f"({len(df_vix)} trading days)")
     print(f"CZ  sample : {df_cz.index.min().date()} -> {df_cz.index.max().date()}")
 
-    # ── Part 1: VIX -> market RETURN ─────────────────────────────────────────
+    # Part 1: VIX -> market RETURN
     print("\n--- Part 1: VIX -> market RETURN (OLS, Newey-West HAC) ---")
     report(df_vix, "fwd_1d", ["vix", "vix_gap63", "vix_gap252", "dvix"], 10,
            "next-day return ~ VIX")
     report(df_vix, "fwd_21d", ["vix", "vix_gap63", "vix_gap252", "dvix"], 42,
            "next-21d return ~ VIX")
 
-    # ── Part 2: VIX -> market VOLATILITY (robust use case) ───────────────────
+    # Part 2: VIX -> market VOLATILITY (robust use case)
     print("\n--- Part 2: VIX -> market VOLATILITY (sanity check / robust use) ---")
     report(df_vix, "rvol_21d", ["vix"], 42, "next-21d realised vol ~ VIX level")
 
-    # ── Part 3: CZ factors -> market return (LassoCV, monthly obs) ───────────
+    # Part 3: CZ factors -> market return (LassoCV, monthly obs)
     print("\n--- Part 3: CZ factors -> next-21d market RETURN (LassoCV, monthly) ---")
     monthly = df_cz.groupby(df_cz.index.to_period("M")).tail(1)
     d = monthly[["fwd_21d"] + cz_cols].dropna().astype("float64")
@@ -128,7 +129,7 @@ def main() -> None:
     print(f"  non-zero factors = {len(nz)}/{len(cz_cols)}"
           + (f"  | top: {', '.join(nz.index[:6])}" if len(nz) else ""))
 
-    # ── Part 4: VIX regime table ─────────────────────────────────────────────
+    # Part 4: VIX regime table
     print("\n--- Part 4: VIX regime table (terciles of VIX level) ---")
     reg = df_vix.dropna(subset=["fwd_21d", "rvol_21d"]).copy()
     reg["regime"] = pd.qcut(reg["vix"], 3, labels=["Low VIX", "Mid VIX", "High VIX"])
