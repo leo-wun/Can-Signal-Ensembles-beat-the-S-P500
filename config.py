@@ -35,7 +35,7 @@ GSPC_PATH_CLEAN = DATA_PROCESSED / 'gspc.parquet'
 
 # Project date window (overlap of CRSP and futures with sufficient coverage)
 START_DATE = "2000-01-01"
-END_DATE = "2020-11-30"
+END_DATE = "2024-12-31"
 
 # ── Feature windows ───────────────────────────────────────────────────────────
 
