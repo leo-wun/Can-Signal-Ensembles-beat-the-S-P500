@@ -13,9 +13,9 @@ class LSTMRegressor(nn.Module):
         self.lstm = nn.LSTM(n_channels, hidden, num_layers, batch_first=True)
         self.head = nn.Linear(hidden, 1)
 
-    def forward(self, x):                       # x: (batch, seq_len, n_channels)
+    def forward(self, x): # x: (batch, seq_len, n_channels)
         _, (h, _) = self.lstm(x)
-        return self.head(h[-1]).squeeze(-1)     # last-layer final hidden state
+        return self.head(h[-1]).squeeze(-1) # last-layer final hidden state
 
 
 def train_lstm(X_tr, y_tr, X_va, y_va, n_channels=1, *, epochs=25, batch_size=8192,
