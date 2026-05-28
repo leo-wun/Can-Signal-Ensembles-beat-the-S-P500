@@ -49,7 +49,7 @@ def polars_features(
     if isinstance(df, pd.DataFrame):
         df = pl.from_pandas(df)
 
-    # ── Momentum features ─────────────────────────────────────────────────────
+    # Momentum features
     momentum_exprs = [
         (
             pl.col(value_col)
@@ -64,7 +64,7 @@ def polars_features(
         for window in config.MOMENTUM_WINDOWS
     ]
 
-    # ── Volatility features ───────────────────────────────────────────────────
+    # Volatility features
     vol_exprs = [
         (
             pl.col(value_col)
@@ -77,7 +77,7 @@ def polars_features(
         for window in config.VOLATILITY_WINDOWS
     ]
 
-    # ── Vol-weighted momentum ─────────────────────────────────────────────────
+    # Vol-weighted momentum
     vol_w_mom_exprs = [
         (
             (
@@ -115,7 +115,7 @@ def polars_features(
         *vol_w_mom_exprs,
     ])
 
-    # ── Cross-sectional rank normalization ────────────────────────────────────
+    # Cross-sectional rank normalization
     # Applied per date on stock-level features only.
     # log_reversal_mkt_1d is excluded — it is identical across stocks on each date.
     if crosssectional_rank:
@@ -145,6 +145,7 @@ def polars_features(
 
 
 def rank_ic_table(df, feature_cols, target='target', date_col='date'):
+    """Compute mean, t-stat, std of the rank IC for each feature"""
     records = []
     for col in feature_cols:
         sub = df[[date_col, col, target]].dropna()

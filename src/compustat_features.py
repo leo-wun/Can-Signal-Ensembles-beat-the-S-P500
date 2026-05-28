@@ -50,26 +50,26 @@ def build_fundamental_features(cs: pd.DataFrame) -> pd.DataFrame:
     derive fundamental characteristics. Returns one row per (gvkey, datadate)
     with cusip8 and the columns in FUNDAMENTAL_COLS."""
     cs = cs.sort_values(["gvkey", "datadate"]).reset_index(drop=True)
-    cs.loc[cs["xrdy"].isna(), "xrdy"] = 0.0          # missing R&D treated as 0
+    cs.loc[cs["xrdy"].isna(), "xrdy"] = 0.0 # missing R&D treated as 0
     gv = cs["gvkey"]
     g = cs.groupby("gvkey", sort=False)
     is_q1 = cs["fqtr"].eq(1)
 
     def ttm_of(col: str) -> pd.Series:
-        q = cs[col] - g[col].shift(1)                # YTD -> single quarter
-        q = q.where(~is_q1, cs[col])                 # Q1 YTD already quarterly
+        q = cs[col] - g[col].shift(1) # YTD -> single quarter
+        q = q.where(~is_q1, cs[col]) # Q1 YTD already quarterly
         return q.groupby(gv, sort=False).transform(
             lambda s: s.rolling(4, min_periods=4).sum())
 
     ttm = {short: ttm_of(ytd) for ytd, short in _FLOW.items()}
-    rev = ttm["rev"].where(ttm["rev"] > 0)           # guard the denominator
+    rev = ttm["rev"].where(ttm["rev"] > 0) # avoid / 0 or log(0)
 
     f = pd.DataFrame({
         "gvkey": gv,
         "datadate": cs["datadate"],
         "cusip8": cs["cusip"].astype(str).str[:8],
     })
-    f["size_proxy"]      = np.log(ttm["rev"].where(ttm["rev"] > 0))  # log TTM revenue
+    f["size_proxy"]      = np.log(ttm["rev"].where(ttm["rev"] > 0)) # log TTM revenue
     f["op_margin"]       = ttm["oiadp"] / rev
     f["gross_margin"]    = (rev - ttm["cogs"]) / rev
     f["ebitda_margin"]   = ttm["oibdp"] / rev

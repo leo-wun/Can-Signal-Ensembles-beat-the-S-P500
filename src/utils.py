@@ -11,7 +11,7 @@ import config
 
 
 
-# ── Fonction to reduce the RAM impact of dataframe ──────────────────────────────────────────────────────
+# reduce RAM
 
 def shrink(df : pd.DataFrame) -> pd.DataFrame:
 
@@ -48,8 +48,7 @@ def shrink_polars(df) -> pl.DataFrame:
     if 'PERMNO' in df.columns:
         specific_casts.append(pl.col('PERMNO').cast(pl.Int32))
         
-    # date is intentionally not downcast — changing datetime precision
-    # (ms vs ns) causes silent merge failures in pandas 2.x
+    # date is intentionally not downcast
         
     # Apply specific casts if there are any
     if specific_casts:
@@ -81,7 +80,7 @@ def generate_batches(df : pd.DataFrame, sample_col : str, batch_number : int, ba
     batch_dict = {}
     total_unique = len(sample_list)
 
-    # Base check: Do we even have enough data for a single batch?
+    # check: enough data for a single batch?
     if total_unique < batch_size:
         raise ValueError(f"Not enough unique samples for a batch of size {batch_size}. Total unique samples available: {total_unique}")
 
@@ -178,11 +177,11 @@ def generate_date_split(
     if n < 3:
         raise ValueError(f"Need at least 3 unique dates to split, got {n}.")
 
-    # --- Calcul des indices de coupure ---
+    # Calcul des indices de coupure
     train_end_idx = int(np.floor(n * train_split))
     val_end_idx = int(np.floor(n * (train_split + val_split)))
 
-    # Garde-fous : chaque split doit avoir au moins une date
+    # chaque split doit avoir au moins une date
     train_end_idx = max(train_end_idx, 1)
     val_end_idx = max(val_end_idx, train_end_idx + 1)
     val_end_idx = min(val_end_idx, n - 1)
@@ -254,16 +253,16 @@ def train_val_test_split(
             test_df = test_df.join(elem, on=date_col, how='left')
 
 
-    # Étape 1 : drop if target is NaN 
+    # drop if target is NaN 
     TARGET_COL = 'target' 
     train_df = train_df.dropna(subset=[TARGET_COL])
     val_df   = val_df.dropna(subset=[TARGET_COL])
     test_df  = test_df.dropna(subset=[TARGET_COL])
     
-    # Étape 2 : Get columns features
+    # Get columns features
     feature_cols = [c for c in train_df.columns if c not in [TARGET_COL, 'PERMNO']]
     
-    # Option B (meilleure) : imputer avec la médiane du train
+    # imputer avec la médiane du train
     medians = train_df[feature_cols].median()
     train_df[feature_cols] = train_df[feature_cols].fillna(medians)
     val_df[feature_cols]   = val_df[feature_cols].fillna(medians)
@@ -274,7 +273,7 @@ def train_val_test_split(
     return (train_df, val_df, test_df)
 
 
-# ── Pipeline from .parquet to train/validation/test split batches ──────────────────────────────────────────────────────
+# Pipeline from .parquet to train/validation/test split batches
 
 
 def split_batch(df : pd.DataFrame,
@@ -352,12 +351,12 @@ def merge_and_batch(
     cz       = pd.read_parquet(config.CZ_PATH_CLEAN)
     vix      = pd.read_parquet(config.VIX_PATH_CLEAN)
 
-    # 2. Normaliser : date en colonne pour tous les df (homogénéité)
+    # 2. date as column for all df
     features = _ensure_date_as_column(features, "date")
     cz       = _ensure_date_as_column(cz, "date")
     vix      = _ensure_date_as_column(vix, "date")
 
-    # 3. Déduplication
+    # 3. deduplicate
     n_before = len(features)
     features = features.drop_duplicates(subset=["date", "PERMNO"], keep="last")
     if verbose:
@@ -373,7 +372,7 @@ def merge_and_batch(
     if verbose:
         print(f"vix      : {n_before - len(vix)} doublons (date) supprimés")
 
-    # 4. Merge VIX avec CZ
+    # 4. VIX and CZ merge
     df_tmp = pd.merge(cz, vix, on="date", how="inner")
 
     n_dup = df_tmp.duplicated(subset="date").sum()
@@ -382,7 +381,7 @@ def merge_and_batch(
             print(f"⚠ df_tmp (cz+vix) : {n_dup} doublons après merge — dédup forcé")
         df_tmp = df_tmp.drop_duplicates(subset="date", keep="last")
 
-    # 5. set_index pour le .join() en aval (date doit être l'index de df_tmp)
+    # 5. set_index pour le .join()
     df_tmp = df_tmp.set_index("date")
 
     if verbose:
