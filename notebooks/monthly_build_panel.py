@@ -17,7 +17,10 @@ import config
 from src.monthly_features import build_monthly_panel, FEATURE_COLS
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get the data and format
     df = pd.read_csv(config.MONTHLY_CRSP_PATH,
                      usecols=["PERMNO", "CUSIP", "SICCD", "MthCalDt", "MthRet", "sprtrn"],
                      dtype={"CUSIP": str})
@@ -26,12 +29,18 @@ def main() -> None:
     df = df.dropna(subset=["ret"])
     df = df.drop_duplicates(["date", "PERMNO"], keep="last")
     df = df.drop(columns=["MthCalDt", "MthRet"])
+    
+    # Display unique PERMNO and date range
     print(f"loaded {len(df):,} monthly obs | {df['PERMNO'].nunique():,} stocks | "
           f"{df['date'].min().date()} -> {df['date'].max().date()}")
 
-    panel = build_monthly_panel(df)
-
+    # Build the monthly panel
+    panel = build_monthly_panel(df) 
+    
+    # Drop NaN values
     usable = panel.dropna(subset=["target"] + FEATURE_COLS)
+    
+    # Display data
     print(f"usable rows (target + all {len(FEATURE_COLS)} features): {len(usable):,}")
     print(f"  since 1970: {len(usable[usable['date'] >= '1970-01-01']):,}"
           f"  | since 2000: {len(usable[usable['date'] >= '2000-01-01']):,}")
@@ -39,6 +48,7 @@ def main() -> None:
     print(usable[FEATURE_COLS + ["target"]].describe().T.to_string(
         float_format=lambda x: f"{x:.4f}"))
 
+    # Save panel to .parquet 
     panel.to_parquet(config.MONTHLY_PANEL_PATH, index=False)
     print(f"\nsaved -> {config.MONTHLY_PANEL_PATH}  ({len(panel):,} rows)")
 
