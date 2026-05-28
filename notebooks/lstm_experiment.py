@@ -4,7 +4,7 @@ LSTM / recurrent-network meta-model.
 Completes the ML model comparison with a sequence model. Instead of consuming a
 single cross-section of engineered features, the LSTM reads the raw sequence of
 each stock's last 20 daily returns and predicts the cross-sectional rank of the
-next-day return — it must learn reversal / momentum / volatility structure
+next-day return ; it must learn reversal / momentum / volatility structure
 itself from the return path. Backtested as a weekly decile long-short on the
 full and the tradable top-1000 universe, exactly like the MLP / XGBoost run.
 """
@@ -29,7 +29,9 @@ TRAIN_END = pd.Timestamp(config.TRAIN_END)
 VAL_END = pd.Timestamp(config.VAL_END)
 
 
-def main() -> None:
+def main(
+    ) -> None:
+    
     df = pd.read_parquet(config.FEATURES_PATH_CLEAN,
                          columns=["date", "PERMNO", "ret", "target"])
     df["date"] = pd.to_datetime(df["date"])
@@ -50,7 +52,10 @@ def main() -> None:
 
     seq_cols = [f"r{k}" for k in range(SEQ_LEN, 0, -1)]   # oldest -> newest
 
-    def make_X(frame):
+    def make_X(
+        frame
+        ):
+        
         return frame[seq_cols].to_numpy("float32")[:, :, None]   # (N, L, 1)
 
     train = df[df.split == "train"]
@@ -72,7 +77,7 @@ def main() -> None:
     dev = next(model.parameters()).device
     preds = []
     with torch.no_grad():
-        for i in range(0, len(Xte), 32768):
+        for i in range(0, len(Xte), 32768): # 2^15 most effective batch size 
             preds.append(model(torch.tensor(Xte[i:i + 32768], device=dev)).cpu().numpy())
     test["pred_lstm"] = np.concatenate(preds)
 
@@ -93,16 +98,24 @@ def main() -> None:
     rebal = dates[::5]
     cost = CostModel(0.001, 0.01)
 
-    def mean_ic(frame):
+    def mean_ic(
+        frame
+        ):
+        
         return frame.groupby("date").apply(
             lambda gg: spearmanr(gg["pred_lstm"], gg["target"])[0],
             include_groups=False).mean()
 
+    # Get SP500 data as benchmark
     gspc = pd.read_parquet(config.GSPC_PATH_CLEAN)
     gspc["date"] = pd.to_datetime(gspc["date"])
     spx = gspc.set_index("date")["sprtrn"].reindex(dates).fillna(0.0)
-    print(f"\n=== LSTM meta-model (weekly L/S decile, test 2019-2024) ===")
+    
+    
+    print(f"\n LSTM meta-model (weekly L/S decile, test 2019-2024) ")
     print(f"S&P500 reference Sharpe: {performance_metrics(spx)['sharpe']:+.2f}\n")
+    
+    
     for uni, N in [("full", None), ("top 1000", 1000)]:
         frame = test if N is None else test[test["cap_rank"] <= N]
         idx = test_idx if N is None else test_idx[test_idx["cap_rank"] <= N]
@@ -110,6 +123,7 @@ def main() -> None:
         bt = run_backtest(w, returns, cost)
         m = performance_metrics(bt["net_return"])
         gs = performance_metrics(bt["gross_return"])["sharpe"]
+        
         print(f"  {uni:9s} | test IC {mean_ic(frame):+.4f} | gross Sharpe {gs:+.2f} "
               f"| net Sharpe {m['sharpe']:+.2f} | ann ret {m['ann_return']:+.2%}")
 

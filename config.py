@@ -63,7 +63,7 @@ FUTURES_MIN_HISTORY_YEARS = 5.0
 # Train / validation / test split dates
 TRAIN_END = "2015-12-31"
 VAL_END = "2018-12-31"
-# test: 2019-01-01 → END_DATE
+# test: 2019-01-01 --> END_DATE
 
 
 

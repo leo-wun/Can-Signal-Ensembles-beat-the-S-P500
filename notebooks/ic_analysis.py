@@ -8,7 +8,7 @@ time-series mean IC, its t-stat, the IC information ratio, the hit rate, and a
 per-year breakdown to gauge stability before committing to the stacking design.
 
 Note: the naive t-stat assumes i.i.d. daily IC. Daily IC is mildly
-autocorrelated, so it overstates significance somewhat — read t-stats as a
+autocorrelated, so it overstates significance somewhat, read t-stats as a
 first cut, not a final verdict.
 """
 
@@ -36,9 +36,17 @@ TARGET = "target"
 DATE = "date"
 
 
-def daily_rank_ic(df: pd.DataFrame) -> pd.DataFrame:
-    """Daily cross-sectional rank IC. Returns a DataFrame indexed by date with
-    one column per signal."""
+def daily_rank_ic(
+    df: pd.DataFrame
+) -> pd.DataFrame:
+    
+    """
+    
+    Daily cross-sectional rank IC. Returns a DataFrame indexed by date with
+    one column per signal.
+    
+    """
+    
     ranked = df.groupby(DATE)[[TARGET] + FEATURE_COLS].rank().astype("float32")
     ranked[DATE] = df[DATE].values
     ic = (
@@ -48,14 +56,23 @@ def daily_rank_ic(df: pd.DataFrame) -> pd.DataFrame:
     return ic
 
 
-def summarise(ic: pd.DataFrame) -> pd.DataFrame:
-    """Time-series summary of daily IC, one row per signal."""
+def summarise(
+    ic: pd.DataFrame
+) -> pd.DataFrame:
+    
+    """
+    
+    Time-series summary of daily IC, one row per signal.
+    
+    """
+    
     n = ic.count()
     mean = ic.mean()
     std = ic.std()
     t_stat = mean / (std / np.sqrt(n))
     icir = mean / std
     hit = (np.sign(ic) == np.sign(mean)).sum() / n
+    
     return pd.DataFrame({
         "mean_IC": mean,
         "IC_std": std,
@@ -66,21 +83,27 @@ def summarise(ic: pd.DataFrame) -> pd.DataFrame:
     }).sort_values("t_stat", key=lambda s: s.abs(), ascending=False)
 
 
-def main() -> None:
+def main(
+) -> None:
+    
+    # Get data
     df = pd.read_parquet(config.FEATURES_PATH_CLEAN, columns=[DATE, TARGET] + FEATURE_COLS)
     df[DATE] = pd.to_datetime(df[DATE])
     print(f"Loaded {len(df):,} rows | {df[DATE].nunique():,} dates | "
           f"{df[DATE].min().date()} -> {df[DATE].max().date()}\n")
 
+    # Get daily IC
     ic = daily_rank_ic(df)
 
-    print("=== Full-sample rank IC (sorted by |t_stat|) ===")
+    # Display data
+    print(" Full-sample rank IC (sorted by |t_stat|) ")
     print(summarise(ic).to_string(float_format=lambda x: f"{x:.4f}"))
 
-    print("\n=== Mean IC by year ===")
+    print("\n Mean IC by year ")
     by_year = ic.groupby(ic.index.year).mean()
     print(by_year.to_string(float_format=lambda x: f"{x:+.4f}"))
 
+    # Create and save graph
     fig, ax = plt.subplots(figsize=(11, 6))
     ic.cumsum().plot(ax=ax, linewidth=1)
     ax.axhline(0, color="grey", lw=0.8, ls="--")

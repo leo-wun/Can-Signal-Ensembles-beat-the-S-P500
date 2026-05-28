@@ -2,15 +2,15 @@
 01 — EDA and Preprocessing pipeline  (converted from 01-02_EDA_preprocessing.ipynb)
 
 Steps performed:
-  1. Load raw CRSP daily CSV → cleaned parquet  (CRSP_PATH_CLEAN)
-  2. Load raw CZ monthly CSV → cleaned forward-filled daily parquet, date as
-     index (CZ_PATH_CLEAN) — same output as 02_features.py
-  3. Load raw VIX parquet    → normalised daily parquet      (VIX_PATH_CLEAN)
+  1. Load raw CRSP daily CSV --> cleaned parquet  (CRSP_PATH_CLEAN)
+  2. Load raw CZ monthly CSV --> cleaned forward-filled daily parquet, date as
+     index (CZ_PATH_CLEAN) — same output as features.py
+  3. Load raw VIX parquet    --> normalised daily parquet      (VIX_PATH_CLEAN)
   4. Build cross-sectional rank-normalised daily features    (FEATURES_PATH_CLEAN)
   5. Generate EDA plots saved to PLOTS_DIR
 
 Run from the project root:
-    python notebooks/01_preprocess_eda.py
+    python notebooks/preprocess_eda.py
 
 Prerequisites:
     data/raw/daily_crsp_raw.parquet   (created by load_crsp_polars() in src/data_loading.py)
@@ -26,13 +26,13 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import matplotlib
-matplotlib.use("Agg")          # non-interactive backend — figures are saved, not displayed
+matplotlib.use("Agg")          # for figure saving
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
 from scipy.stats import spearmanr
 
-# Ensure UTF-8 console output on Windows (src/utils.py prints use → arrows)
+# Ensure UTF-8 console output on Windows (src/utils.py prints use --> arrows)
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
@@ -96,7 +96,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     # ── 1a. Bootstrap CRSP raw parquet from CSV if needed ────────────────────
     if not config.CRSP_PATH_RAW.exists():
         print("  CRSP raw parquet not found — loading from CSV (this may take a moment)...")
-        load_crsp_polars()               # reads daily_crsp.csv → CRSP_PATH_RAW
+        load_crsp_polars()               # reads daily_crsp.csv --> CRSP_PATH_RAW
 
     print("=" * 60)
     print("Step 1: Clean CRSP daily returns")
@@ -109,7 +109,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     # ── 2a. Bootstrap CZ raw parquet from CSV if needed ──────────────────────
     if not config.CZ_PATH_RAW.exists():
         print("  CZ raw parquet not found — loading from CSV...")
-        load_cz_monthly()                # reads Chen_Zimmerman_monthly.csv → CZ_PATH_RAW
+        load_cz_monthly()                # reads Chen_Zimmerman_monthly.csv --> CZ_PATH_RAW
 
     print("\n" + "=" * 60)
     print("Step 2: Clean Chen-Zimmermann monthly factors")
@@ -137,7 +137,7 @@ def run_pipeline() -> tuple[pd.DataFrame, pd.DataFrame]:
     feat_pl = shrink_polars(feat_pl)
     feat = feat_pl.to_pandas()
     feat.to_parquet(config.FEATURES_PATH_CLEAN, compression="zstd", index=False)
-    print(f"  Saved → {config.FEATURES_PATH_CLEAN}")
+    print(f"  Saved --> {config.FEATURES_PATH_CLEAN}")
     print(f"  Shape: {feat.shape}  |  Stocks: {feat['PERMNO'].nunique():,}  "
           f"|  Dates: {feat['date'].nunique():,}")
 
@@ -486,7 +486,7 @@ def main() -> None:
     cs_cols   = [c for c in feat_cols if c != "log_reversal_mkt_1d"]
 
     print("\n" + "=" * 60)
-    print("Step 5: EDA plots  →  " + str(config.PLOTS_DIR))
+    print("Step 5: EDA plots  -->  " + str(config.PLOTS_DIR))
     print("=" * 60)
 
     plot_return_distribution(crsp)
@@ -500,8 +500,8 @@ def main() -> None:
     plot_train_val_test_split(feat)
 
     print("\nDone. All outputs saved to:")
-    print(f"  Processed data  →  {config.DATA_PROCESSED}")
-    print(f"  Plots           →  {config.PLOTS_DIR}")
+    print(f"  Processed data  -->  {config.DATA_PROCESSED}")
+    print(f"  Plots           -->  {config.PLOTS_DIR}")
 
 
 if __name__ == "__main__":

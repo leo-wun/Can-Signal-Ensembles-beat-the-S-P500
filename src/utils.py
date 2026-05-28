@@ -197,7 +197,7 @@ def generate_date_split(
     print(f"Total unique dates: {n}")
     for name, (start, end) in splits.items():
         n_dates = ((unique_dates >= start) & (unique_dates <= end)).sum()
-        print(f"  {name:5s}: {start.date()} → {end.date()}  ({n_dates} dates, {n_dates/n:.1%})")
+        print(f"  {name:5s}: {start.date()} --> {end.date()}  ({n_dates} dates, {n_dates/n:.1%})")
 
     return splits
 

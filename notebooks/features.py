@@ -1,24 +1,24 @@
 """
-02 — Feature building and auxiliary data loading  (converted from 02_features.ipynb)
+02 — Feature building and auxiliary data loading  (converted from features.ipynb)
 
 Assumes that data/processed/daily_crsp.parquet already exists (created by
-01_preprocess_eda.py or by calling clean_crsp() manually).
+preprocess_eda.py or by calling clean_crsp() manually).
 
 Steps performed:
   1. Load cleaned CRSP daily parquet and rebuild cross-sectional features
-     → FEATURES_PATH_CLEAN  (data/processed/features.parquet)
+     --> FEATURES_PATH_CLEAN  (data/processed/features.parquet)
   2. Clean the Chen-Zimmermann factors via clean_cz_monthly() — identical output
-     to 01_preprocess_eda.py (daily, decorrelated, shifted, date as index)
-     → CZ_PATH_CLEAN         (data/processed/Chen_Zimmerman_monthly.parquet)
+     to preprocess_eda.py (daily, decorrelated, shifted, date as index)
+     --> CZ_PATH_CLEAN         (data/processed/Chen_Zimmerman_monthly.parquet)
   3. [Optional — requires WRDS access] Fetch VIX from WRDS and clean it
-     → VIX_PATH_CLEAN        (data/processed/vix.parquet)
+     --> VIX_PATH_CLEAN        (data/processed/vix.parquet)
      Skip step 3 if data/raw/vix_raw.parquet already exists.
 
 Run from the project root:
-    python notebooks/02_features.py [--no-vix]
+    python notebooks/features.py [--no-vix]
 
 Prerequisites:
-    data/processed/daily_crsp.parquet  (run 01_preprocess_eda.py first)
+    data/processed/daily_crsp.parquet  (run preprocess_eda.py first)
     data/raw/Compustat_quarterly.csv   (course-provided)
     data/raw/Chen_Zimmerman_monthly.csv (course-provided)
     password.py with WRDS_USERNAME / WRDS_PASSWORD  (only needed for VIX fetch)
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Ensure UTF-8 console output on Windows (some src prints use → arrows)
+# Ensure UTF-8 console output on Windows (some src prints use --> arrows)
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
@@ -73,7 +73,7 @@ def build_features() -> None:
     print(f"  RAM after  shrink: {df.estimated_size() / 1024**3:.2f} GB")
 
     df.to_pandas().to_parquet(config.FEATURES_PATH_CLEAN, compression="zstd")
-    print(f"  Saved → {config.FEATURES_PATH_CLEAN}")
+    print(f"  Saved --> {config.FEATURES_PATH_CLEAN}")
 
 
 # ── Step 2: Rebuild CZ processed parquet ─────────────────────────────────────
@@ -93,10 +93,10 @@ def build_cz() -> None:
     # clean_cz_monthly reads CZ_PATH_RAW; bootstrap it from the CSV if absent.
     if not config.CZ_PATH_RAW.exists():
         print("  CZ raw parquet not found — loading from CSV...")
-        load_cz_monthly()                 # reads Chen_Zimmerman_monthly.csv → CZ_PATH_RAW
+        load_cz_monthly()                 # reads Chen_Zimmerman_monthly.csv --> CZ_PATH_RAW
 
     cz = clean_cz_monthly()               # reads CZ_PATH_RAW, saves CZ_PATH_CLEAN
-    print(f"  Saved → {config.CZ_PATH_CLEAN}")
+    print(f"  Saved --> {config.CZ_PATH_CLEAN}")
     print(f"  Shape: {cz.shape}  |  Factors: {cz.shape[1]}  |  date as index: "
           f"{cz.index.name == 'date'}")
 
@@ -128,7 +128,7 @@ def build_vix() -> None:
 
     df_vix = pd.read_parquet(vix_raw_path)
     clean_vix(df_vix)          # saves VIX_PATH_CLEAN
-    print(f"  Saved → {config.VIX_PATH_CLEAN}")
+    print(f"  Saved --> {config.VIX_PATH_CLEAN}")
 
     vix_clean = pd.read_parquet(config.VIX_PATH_CLEAN)
     print(f"  Shape: {vix_clean.shape}")
@@ -146,10 +146,10 @@ def main(include_vix: bool = True) -> None:
         print("\nVIX step skipped (--no-vix flag).")
 
     print("\nDone.")
-    print(f"  Features → {config.FEATURES_PATH_CLEAN}")
-    print(f"  CZ       → {config.CZ_PATH_CLEAN}")
+    print(f"  Features --> {config.FEATURES_PATH_CLEAN}")
+    print(f"  CZ       --> {config.CZ_PATH_CLEAN}")
     if include_vix:
-        print(f"  VIX      → {config.VIX_PATH_CLEAN}")
+        print(f"  VIX      --> {config.VIX_PATH_CLEAN}")
 
 
 if __name__ == "__main__":
