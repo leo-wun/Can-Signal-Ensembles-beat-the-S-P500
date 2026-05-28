@@ -27,23 +27,23 @@ def build_monthly_panel(df: pd.DataFrame, ret_col: str = "ret",
     df["_logr"] = np.log1p(df[ret_col].clip(lower=-0.99))
     g = df.groupby(id_col, sort=False)
 
-    # next-month return -- the prediction target
+    # next-month return (target)
     df["target"] = g[ret_col].shift(-1)
 
-    # short-term reversal: the most recent month's return
+    # short-term reversal
     df["reversal_1m"] = df[ret_col]
 
-    # momentum: cumulative log return over the window, skipping month t
+    # momentum (skipping month t)
     df["mom_12_1"] = g["_logr"].transform(
         lambda s: s.shift(1).rolling(11, min_periods=6).sum())
     df["mom_6_1"] = g["_logr"].transform(
         lambda s: s.shift(1).rolling(5, min_periods=3).sum())
 
-    # long-term reversal: cumulative log return over months t-36..t-13
+    # long-term reversal: (t-13 to t-36)
     df["ltr_36_13"] = g["_logr"].transform(
         lambda s: s.shift(13).rolling(24, min_periods=12).sum())
 
-    # volatility: standard deviation of monthly returns over the trailing year
+    # volatility
     df["vol_12m"] = g[ret_col].transform(
         lambda s: s.rolling(12, min_periods=6).std())
 

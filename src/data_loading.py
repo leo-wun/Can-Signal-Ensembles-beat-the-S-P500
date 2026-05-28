@@ -11,8 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 
 
-
-
 def load_crsp_polars(path=None):
     """Load CRSP daily stock returns with polars"""
     df = pl.read_csv(config.CRSP_PATH,
@@ -34,11 +32,6 @@ def load_crsp_polars(path=None):
     print(f'Saved as .parquet file to {PATH}')
 
     return df
-
-
-
-
-
 
 
 def load_cz_monthly(path : str = None,
