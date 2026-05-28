@@ -46,8 +46,8 @@ An end-to-end empirical study of cross-sectional return predictability in the U.
 │       └── lstm_model.py            # LSTM recurrent model (PyTorch)
 │
 ├── notebooks/                       # All steps are plain .py scripts (run with python)
-│   ├── 01_preprocess_eda.py         # Clean raw CSVs → parquet + 15 EDA figures
-│   ├── 02_features.py               # Rebuild features + CZ; optional WRDS VIX fetch
+│   ├── preprocess_eda.py         # Clean raw CSVs → parquet + 15 EDA figures
+│   ├── features.py               # Rebuild features + CZ; optional WRDS VIX fetch
 │   │
 │   ├── ic_analysis.py               # Daily cross-sectional IC
 │   ├── signal_correlation.py        # Feature correlation matrix
@@ -79,14 +79,7 @@ An end-to-end empirical study of cross-sectional return predictability in the U.
 
 ### 1 · Python environment
 
-The project requires Python ≥ 3.11. The recommended way to install dependencies is via [Poetry](https://python-poetry.org/):
-
-```bash
-poetry install
-poetry shell
-```
-
-Alternatively, use pip:
+Use pip:
 
 ```bash
 pip install -r requirements.txt
@@ -146,7 +139,7 @@ fetch_crsp_liquidity()          # saves to data/raw/crsp_liquidity_raw.parquet
 load_VIX()                      # saves to data/raw/vix_raw.parquet
 ```
 
-> `fetch_ccm_linktable()` and `fetch_sp500()` are fast (~seconds). `fetch_crsp_liquidity()` pulls ~20 M rows and takes a few minutes. VIX and the CRSP price/market-cap pull are *not* among the course-provided datasets — they back the daily liquidity filter and regime EDA only; the main monthly result uses provided data exclusively.
+> `fetch_ccm_linktable()` and `fetch_sp500()` are fast (~seconds). `fetch_crsp_liquidity()` pulls ~20 M rows and takes a few minutes. VIX and the CRSP price/market-cap pull are *not* among the course-provided datasets. They back the daily liquidity filter and regime EDA only; the main monthly result uses provided data exclusively.
 
 ---
 
@@ -160,7 +153,7 @@ Convert the raw CSVs to cleaned parquet files, build the daily technical
 features, and produce the exploratory figures:
 
 ```bash
-python notebooks/01_preprocess_eda.py
+python notebooks/preprocess_eda.py
 ```
 
 This script:
@@ -176,11 +169,11 @@ This script:
 > The IC figures recompute per-date Spearman correlations across ~6,300 dates,
 > so this script takes several minutes on the full universe.
 
-Alternatively, `02_features.py` rebuilds only the feature and CZ parquets and can
+Alternatively, `features.py` rebuilds only the feature and CZ parquets and can
 fetch VIX from WRDS in the same run:
 
 ```bash
-python notebooks/02_features.py --no-vix   # drop --no-vix to also fetch VIX from WRDS
+python notebooks/features.py --no-vix   # drop --no-vix to also fetch VIX from WRDS
 ```
 
 ### Step 2 — Daily signal analysis (Section 3–4 of the report)
@@ -264,27 +257,9 @@ python notebooks/lstm_experiment.py
 | `monthly_cost_robustness.py` | Bottom-500 XGBoost breakeven vs S&P 500: **~57 bps** |
 | `liquidity_filter.py` | Weekly reversal on tradable top-1,000: net Sharpe **−0.12** |
 
----
-
-## Compiling the Report
-
-The report source is in `report/main.tex`. Compile with:
-
-```bash
-cd report
-pdflatex main.tex
-bibtex main
-pdflatex main.tex
-pdflatex main.tex
-```
-
-Or upload the `report/` folder to [Overleaf](https://www.overleaf.com) and compile there. Required packages: `booktabs`, `natbib`, `microtype`, `graphicx`, `subcaption` (all included in standard TeX Live / MiKTeX distributions).
-
----
-
 ## Notes on Runtime and Reproducibility
 
-- **Randomness:** All models use `random_state=0`. PyTorch operations are not fully deterministic across hardware; minor numerical differences in MLP/LSTM outputs are expected.
-- **WRDS data versions:** The CRSP and Compustat files were pulled in May 2026. Minor differences may appear if the underlying WRDS data is revised.
-- **Long-running scripts:** `monthly_model_universe_sweep.py` and `monthly_cost_robustness.py` each take 30–60 minutes on a modern laptop CPU. They do not require a GPU.
-- **GPU:** The MLP and LSTM models automatically use a CUDA GPU if available; they fall back to CPU otherwise. Training on CPU takes ~2–5 minutes per model.
+- **Randomness:** All models use `random_state=0`.
+- **WRDS data versions:** The CRSP and Compustat files were pulled in May 2026.
+- **Long-running scripts:** `monthly_model_universe_sweep.py` and `monthly_cost_robustness.py` each take ~30 minutes.
+- **GPU:** The MLP and LSTM models automatically use a CUDA GPU if available.
