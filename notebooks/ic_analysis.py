@@ -118,3 +118,17 @@ def main(
 
 if __name__ == "__main__":
     main()
+
+
+
+
+"""
+
+Commentary on "signal_cumulative_ic.png"
+
+We observe only 4 components to show positive IC which are all momentum on different window size.
+However, as we will see it later, the different momentum features are all strongly intercorrelated.
+Using extra data set like Compustat could expand the effective signal space by introducing 
+orthogonal features.
+
+"""
