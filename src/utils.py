@@ -11,9 +11,11 @@ import config
 
 
 
-# reduce RAM
+# Reduce RAM
 
-def shrink(df : pd.DataFrame) -> pd.DataFrame:
+def shrink(
+    df : pd.DataFrame
+) -> pd.DataFrame:
 
     for col in df.select_dtypes('float64').columns:
         df[col] = df[col].astype('float32')
@@ -30,7 +32,9 @@ def shrink(df : pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-def shrink_polars(df) -> pl.DataFrame:
+def shrink_polars(
+    df
+) -> pl.DataFrame:
 
     # 1. Convert to Polars if necessary
     if isinstance(df, pd.DataFrame):
@@ -57,7 +61,14 @@ def shrink_polars(df) -> pl.DataFrame:
     return df
 
 
-def generate_batches(df : pd.DataFrame, sample_col : str, batch_number : int, batch_size : int, overlap : bool = True) -> dict:
+def generate_batches(
+    df : pd.DataFrame, 
+    sample_col : str, 
+    batch_number : int, 
+    batch_size : int, 
+    overlap : bool = True
+) -> dict:
+    
     """
     Generate a dictionnary of batches sampled on the the dataframe provided.
     
@@ -158,11 +169,12 @@ def generate_date_split(
     common_min_date = main_dates.min()
     common_max_date = main_dates.max()
 
-    for elem in df_to_join:
-        elem_dates = get_dates(elem, date_col)
-        # Narrow the window to the maximum of the minimums, and minimum of the maximums
-        common_min_date = max(common_min_date, elem_dates.min())
-        common_max_date = min(common_max_date, elem_dates.max())
+    if df_to_join is not None:
+        for elem in df_to_join:
+            elem_dates = get_dates(elem, date_col)
+            # Narrow the window to the maximum of the minimums, and minimum of the maximums
+            common_min_date = max(common_min_date, elem_dates.min())
+            common_max_date = min(common_max_date, elem_dates.max())
 
 
     # 3. Convert main dates to datetime, get unique, and sort
@@ -177,11 +189,11 @@ def generate_date_split(
     if n < 3:
         raise ValueError(f"Need at least 3 unique dates to split, got {n}.")
 
-    # Calcul des indices de coupure
+    # Compute index cut
     train_end_idx = int(np.floor(n * train_split))
     val_end_idx = int(np.floor(n * (train_split + val_split)))
 
-    # chaque split doit avoir au moins une date
+    # Each split must have at least one date
     train_end_idx = max(train_end_idx, 1)
     val_end_idx = max(val_end_idx, train_end_idx + 1)
     val_end_idx = min(val_end_idx, n - 1)
@@ -328,8 +340,17 @@ def split_batch(df : pd.DataFrame,
     return split_batch_dict
 
 
-def _ensure_date_as_column(df: pd.DataFrame, date_col: str = "date") -> pd.DataFrame:
-    """Garantit que `date_col` est une colonne, pas un index."""
+def _ensure_date_as_column(
+    df: pd.DataFrame, 
+    date_col: str = "date"
+) -> pd.DataFrame:
+    
+    """
+    
+    Garantit que `date_col` est une colonne, pas un index.
+    
+    """
+    
     if date_col in df.columns:
         return df
     if df.index.name == date_col or date_col in (df.index.names or []):
@@ -342,6 +363,7 @@ def merge_and_batch(
     val_split: float = 0.15,
     verbose: bool = True,
 ) -> dict:
+    
     """
     Read the features/cz/vix parquet files, deduplicate, and make the batch/split.
     """
@@ -414,3 +436,43 @@ def merge_and_batch(
     gc.collect()
 
     return split_batch_dict
+
+
+def prepare(
+    df_raw: pd.DataFrame,
+    side,
+    N,
+    FUNDAMENTAL_COLS : list,
+    FEATURES : list
+)-> pd.DataFrame:
+    
+    """
+    
+    Filter the panel to the top-N (largest) or bottom-N (smallest) stocks
+    per month by lagged log TTM revenue, then impute remaining NaN fundamentals
+    cross-sectionally and rank-normalise all features per date within the
+    resulting trading universe.
+    
+    """
+    
+    df = df_raw.copy()
+    # Get full universe or bottom N
+    if N is not None:
+        df = df.dropna(subset=["size_proxy"])
+        ascending = (side == "bottom")              # rank 1 = smallest
+        rank = df.groupby("date")["size_proxy"].rank(method="first", ascending=ascending)
+        df = df[rank <= N]
+        
+    # Prepare fundamental features of the compustat dataset
+    for c in FUNDAMENTAL_COLS:
+        df[c] = df[c].fillna(df.groupby("date")[c].transform("median"))
+        df[c] = df[c].fillna(0.0)
+    # Rank features
+    for c in FEATURES:
+        df[c] = df.groupby("date")[c].rank(pct=True) - 0.5
+        
+    # Rank target column
+    df["yrank"] = df.groupby("date")["target"].rank(pct=True)
+    
+    return df
+

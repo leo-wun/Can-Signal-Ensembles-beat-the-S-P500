@@ -32,6 +32,7 @@ from src.backtest import CostModel, held_weights, run_backtest, performance_metr
 from src.models.mlp_model import train_mlp
 from src.monthly_features import FEATURE_COLS as TECH_COLS
 from src.compustat_features import FUNDAMENTAL_COLS
+from src.utils import prepare
 
 
 # Set Global Variable
@@ -51,42 +52,6 @@ UNIVERSES = [
 LASSO_CV_SAMPLE = 200_000
 
 
-def prepare(
-    df_raw: pd.DataFrame,
-    side,
-    N
-)-> pd.DataFrame:
-    
-    """
-    
-    Filter the panel to the top-N (largest) or bottom-N (smallest) stocks
-    per month by lagged log TTM revenue, then impute remaining NaN fundamentals
-    cross-sectionally and rank-normalise all features per date within the
-    resulting trading universe.
-    
-    """
-    
-    df = df_raw.copy()
-    # Get full universe or bottom N
-    if N is not None:
-        df = df.dropna(subset=["size_proxy"])
-        ascending = (side == "bottom")              # rank 1 = smallest
-        rank = df.groupby("date")["size_proxy"].rank(method="first", ascending=ascending)
-        df = df[rank <= N]
-        
-    # Prepare fundamental features of the compustat dataset
-    for c in FUNDAMENTAL_COLS:
-        df[c] = df[c].fillna(df.groupby("date")[c].transform("median"))
-        df[c] = df[c].fillna(0.0)
-    # Rank features
-    for c in FEATURES:
-        df[c] = df.groupby("date")[c].rank(pct=True) - 0.5
-        
-    # Rank target column
-    df["yrank"] = df.groupby("date")["target"].rank(pct=True)
-    
-    return df
-
 
 def run_one_universe(
     name: str,
@@ -96,7 +61,7 @@ def run_one_universe(
 ):
     
     # Prepare data and split train, validation and test dataset
-    df = prepare(df_raw, side, N)
+    df = prepare(df_raw, side, N, FUNDAMENTAL_COLS, FEATURES)
     train = df[df["date"] <= TRAIN_END]
     val = df[(df["date"] > TRAIN_END) & (df["date"] <= VAL_END)]
     test = df[df["date"] > VAL_END].copy()
@@ -113,12 +78,13 @@ def run_one_universe(
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
     
     # Initialize, train and predict LassoCV
-    lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
+    lcv = LassoCV(cv=5, n_jobs=1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
     test["pred_lasso"] = lcv.predict(Xte)
 
     # Initialize, train and predict XGboost regressor
+    # n_jobs=1 for the same reason as above; XGBoost manages its own threads.
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
-                       subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
+                       subsample=0.8, colsample_bytree=0.8, n_jobs=1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
     xgb.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     test["pred_xgb"] = xgb.predict(Xte)
@@ -242,7 +208,59 @@ Clearly above other filtration on the universe, the performance is way above the
 However, a note on the fact that the trading costs used for those results are 10bps which correspond to
 cost usually found for large cap. However, small cap are notorious for having larger trading costs as 
 they are less traded. Thus what we will do next is study the breakeven point for costs of a bottom 500 strategy
-to see if the performance remains.   
+to see if the performance remains.  
+
+
+
+raw sample (>= 1980-01-01): 3,223,602 rows | size_proxy present in 46.1% of rows
+
+ universe 'full' (side=None, N=None) | train 2,150,706 | val 281,008 | test 791,888
+
+ universe 'top 2000' (side=top, N=2000) | train 392,135 | val 96,000 | test 238,000
+
+ universe 'top 1000' (side=top, N=1000) | train 215,135 | val 48,000 | test 119,000
+
+ universe 'top 500' (side=top, N=500) | train 125,413 | val 24,000 | test 59,500
+
+ universe 'bottom 2000' (side=bottom, N=2000) | train 392,135 | val 96,000 | test 238,000
+
+ universe 'bottom 1000' (side=bottom, N=1000) | train 215,135 | val 48,000 | test 119,000
+
+ universe 'bottom 500' (side=bottom, N=500) | train 125,413 | val 24,000 | test 59,500
+
+ Monthly L/S decile, net of 10 bps + 1% borrow (test 2015-01-30 -> 2024-10-31) 
+S&P500 reference Sharpe = +0.77
+
+                    test_IC sharpe ann_return ann_vol max_drawdown
+universe    model                                                 
+full        Lasso   +0.0849  +0.20     +5.18%  25.31%       -71.5%
+            XGBoost +0.0948  +0.41    +10.40%  25.08%       -65.6%
+            MLP     +0.0892  +0.38     +9.02%  23.95%       -67.0%
+            EW      +0.0792  +0.17     +3.84%  22.80%       -68.5%
+top 2000    Lasso   +0.0341  -0.11     -3.03%  28.48%       -69.0%
+            XGBoost +0.0328  -0.05     -1.30%  28.52%       -63.4%
+            MLP     +0.0002  -0.09     -1.03%  11.29%       -24.4%
+            EW      +0.0303  -0.24     -6.10%  25.85%       -73.1%
+top 1000    Lasso   +0.0224  -0.17     -4.28%  25.00%       -61.0%
+            XGBoost +0.0184  -0.18     -4.24%  23.02%       -60.0%
+            MLP     -0.0065  -0.40     -3.80%   9.38%       -34.4%
+            EW      +0.0257  -0.26     -5.98%  22.91%       -66.4%
+top 500     Lasso   +0.0180  -0.19     -4.13%  22.18%       -53.0%
+            XGBoost +0.0249  -0.16     -3.15%  19.97%       -50.5%
+            MLP     -0.0100  -0.54     -4.68%   8.66%       -39.2%
+            EW      +0.0201  -0.34     -7.07%  20.88%       -65.2%
+bottom 2000 Lasso   +0.1171  +0.50    +14.06%  28.28%       -76.1%
+            XGBoost +0.1193  +0.45    +13.52%  29.96%       -78.8%
+            MLP     +0.0536  +0.43     +6.63%  15.49%       -48.2%
+            EW      +0.1073  +0.30     +8.70%  29.31%       -74.8%
+bottom 1000 Lasso   +0.1354  +0.66    +21.58%  32.46%       -81.6%
+            XGBoost +0.1372  +0.91    +29.87%  32.68%       -76.4%
+            MLP     +0.0596  +0.24     +5.21%  21.55%       -56.4%
+            EW      +0.1186  +0.33    +10.17%  30.71%       -79.0%
+bottom 500  Lasso   +0.1347  +0.74    +27.64%  37.32%       -80.3%
+            XGBoost +0.1299  +1.18    +40.86%  34.77%       -76.8%
+            MLP     +0.0614  +0.11     +2.77%  26.20%       -65.1%
+            EW      +0.0966  +0.09     +3.32%  36.33%       -86.7% 
 
 """
 

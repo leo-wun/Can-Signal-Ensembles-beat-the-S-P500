@@ -118,8 +118,6 @@ def main(
 
     # Load vix and Chen-Zimmerman data
     vix = pd.read_parquet(config.VIX_PATH_CLEAN)
-    cz = pd.read_parquet(config.CZ_PATH_CLEAN)
-    cz_cols = cz.columns.tolist()
 
     # Forward market targets (log returns)
     logret = np.log1p(gspc["sprtrn"])
@@ -137,13 +135,11 @@ def main(
 
     # Merge 
     df_vix = tgt.join(vfeat, how="inner").loc[START:].dropna(subset=["vix"])
-    df_cz = tgt.join(cz, how="inner").loc[START:]
 
     # Display data information
     print(" Regime layer validation ")
     print(f"VIX sample : {df_vix.index.min().date()} -> {df_vix.index.max().date()} "
           f"({len(df_vix)} trading days)")
-    print(f"CZ  sample : {df_cz.index.min().date()} -> {df_cz.index.max().date()}")
 
     # Part 1: VIX -> market RETURN
     print("\n Part 1: VIX -> market RETURN (OLS, Newey-West HAC) ")
@@ -193,7 +189,6 @@ the volatility/indicator of volatility is a strong tool that we could add to our
 
 
 VIX sample : 2000-01-03 -> 2024-12-31 (6289 trading days)
-CZ  sample : 2000-01-03 -> 2020-11-30
 
  Part 1: VIX -> market RETURN (OLS, Newey-West HAC) 
 

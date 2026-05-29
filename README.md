@@ -8,7 +8,7 @@ An end-to-end empirical study of cross-sectional return predictability in the U.
 ## Links
 
 - **GitHub repository:** `https://github.com/leo-wun/ML-For-Finance-Project-LeoWunderli-329314-DarioFrey-344524`, invite `DjoFE2021`
-- **Raw data archive (zipped):** `https://drive.google.com/drive/folders/<RAW-DATA-ARCHIVE-PLACEHOLDER>` — a single zip of the raw inputs (Daily/Monthly CRSP, Compustat, Chen–Zimmermann, JKP) so the pipeline can be reproduced **without** re-downloading from WRDS/CRSP. Unzip into `data/raw/`.
+- **Raw data archive (zipped):** `https://drive.google.com/drive/folders/1h-pifzGcgFoBAj_kZ8oTngdmffxvE6rh?usp=sharing` — a single zip of the raw inputs (Daily/Monthly CRSP, Compustat, Chen–Zimmermann, JKP) so the pipeline can be reproduced **without** re-downloading from WRDS/CRSP. Unzip into `data/raw/`.
 
 > Compliance note: the headline monthly result uses only course-provided datasets (CRSP + Compustat, merged via the endorsed CCM table). VIX and CRSP market capitalisation are supplementary inputs used **only** for the robustness analyses (daily liquidity filter, low-vol, regime tables), as disclosed in §2 of the report.
 
@@ -19,7 +19,6 @@ An end-to-end empirical study of cross-sectional return predictability in the U.
 ```
 .
 ├── config.py                        # All paths and constants
-├── password.py                      # WRDS credentials (not committed — see Setup)
 ├── pyproject.toml / requirements.txt
 │
 ├── data/
@@ -91,13 +90,7 @@ Key dependencies: `pandas`, `numpy`, `polars`, `scipy`, `scikit-learn`, `xgboost
 
 Two scripts pull supplementary data directly from WRDS (Wharton Research Data Services): the CCM linking table and the CRSP liquidity file. Both require a WRDS account.
 
-Create a file called **`password.py`** in the project root (this file is listed in `.gitignore` and is **never committed**):
-
-```python
-# password.py
-WRDS_USERNAME = "your_wrds_username"
-WRDS_PASSWORD = "your_wrds_password"
-```
+While running those  scripts, you will be asked to enter your **`USERNAME`** and **`PASSWORD`**.
 
 > **Note:** If you do not have WRDS access, the CCM linktable and CRSP liquidity parquets are included as pre-computed files in `data/raw/`, so the WRDS pull steps can be skipped.
 

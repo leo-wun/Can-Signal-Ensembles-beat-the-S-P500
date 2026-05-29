@@ -5,14 +5,22 @@ from pathlib import Path
 import wrds
 import polars as pl
 from sklearn.preprocessing import RobustScaler
-import password
+
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 
 
-def load_crsp_polars(path=None):
-    """Load CRSP daily stock returns with polars"""
+def load_crsp_polars(
+    path=None
+):
+    
+    """
+    
+    Load CRSP daily stock returns with polars
+    
+    """
+    
     df = pl.read_csv(config.CRSP_PATH,
                 schema_overrides={'HdrCUSIP' : pl.String,
                                 'Ticker' : pl.String,
@@ -39,7 +47,9 @@ def load_cz_monthly(path : str = None,
                     completion_factor : float = 0.9,
                     corr_coef : float = 0.95
 )-> pd.DataFrame:
+    
     """
+    
     Load and preprocess the Chen-Zimmerman dataset. Include a fill forward to daily frequency to match daily returns
 
     Input ->
@@ -51,6 +61,7 @@ def load_cz_monthly(path : str = None,
     Output ->
 
     df:                     Dataframe of the normalized, daily frequency data
+    
     """
 
     PATH = path or config.CZ_PATH_RAW
@@ -73,10 +84,12 @@ def load_VIX(
     path : str = None
 ) -> pd.DataFrame:
 
-    '''
+    """
+    
     Query VIX data on wrds
     
-    '''
+    """
+    
     # 1. Set destination
     PATH = path or config.VIX_PATH_RAW
 
@@ -152,11 +165,11 @@ def fetch_sp500(
     path : str = None
 ) -> pd.DataFrame:
     
-    '''
+    """
+    
     Query S&P500 data on wrds
     
-    
-    '''
+    """
     
     # 1. Set destination
 
@@ -173,7 +186,7 @@ def fetch_sp500(
         sp500 = f"""
             SELECT date, vwretd, ewretd, sprtrn
             FROM crsp.dsi
-            WHERE caldt >= '{start_date}',
+            WHERE caldt >= '{start_date}'
             AND caldt <= '{end_date}'
         """
     else:
@@ -199,7 +212,9 @@ def fetch_crsp_liquidity(
     end_date: str = '2024-12-31',
     path: str = None,
 ) -> pd.DataFrame:
+    
     """
+    
     Pull daily price, market cap and dollar volume from the CRSP CIZ daily
     stock file (crsp.dsf_v2). These liquidity columns were dropped by
     load_crsp_polars but are needed to build a tradable-universe filter.
@@ -207,20 +222,23 @@ def fetch_crsp_liquidity(
     The pull is restricted to the PERMNO universe present in features.parquet.
     dlyprc may be negative when CRSP stores a bid/ask average — take abs() when
     using it as a price level.
+    
     """
+    
     PATH = path or config.CRSP_LIQUIDITY_RAW
 
     permnos = pd.read_parquet(config.FEATURES_PATH_CLEAN, columns=['PERMNO'])['PERMNO']
     permno_list = ','.join(str(int(p)) for p in permnos.dropna().unique())
 
-    db = wrds.Connection(wrds_username=password.WRDS_USERNAME,
-                         wrds_password=password.WRDS_PASSWORD)
+    db = wrds.Connection()
+    
     sql = f"""
         SELECT permno, dlycaldt, dlyprc, dlycap, dlyprcvol
         FROM crsp.dsf_v2
         WHERE dlycaldt BETWEEN '{start_date}' AND '{end_date}'
           AND permno IN ({permno_list})
     """
+    
     df = db.raw_sql(sql, date_cols=['dlycaldt'])
     db.close()
 
@@ -234,24 +252,31 @@ def fetch_crsp_liquidity(
 
 
 
-def fetch_ccm_linktable(path: str = None) -> pd.DataFrame:
+def fetch_ccm_linktable(
+    path: str = None
+) -> pd.DataFrame:
+    
     """
+    
     Pull the CRSP/Compustat Merged (CCM) linking table from WRDS.
 
     Maps Compustat gvkey to CRSP lpermno with validity ranges (linkdt,
     linkenddt). Filtered to high-quality primary links: linktype in
     {'LC','LU'} and linkprim in {'P','C'}. This is the recommended way to link
     Compustat with CRSP, per the project guidelines.
+    
     """
+    
     PATH = path or config.CCM_LINKTABLE_PATH
-    db = wrds.Connection(wrds_username=password.WRDS_USERNAME,
-                         wrds_password=password.WRDS_PASSWORD)
+    db = wrds.Connection()
+    
     sql = """
         SELECT gvkey, lpermno, lpermco, linktype, linkprim, liid,
                linkdt, linkenddt
         FROM crsp.ccmxpf_lnkhist
         WHERE linktype IN ('LC','LU') AND linkprim IN ('P','C')
     """
+    
     df = db.raw_sql(sql, date_cols=['linkdt', 'linkenddt'])
     db.close()
 
@@ -264,4 +289,6 @@ def fetch_ccm_linktable(path: str = None) -> pd.DataFrame:
 
     df.to_parquet(PATH, index=False)
     print(f'CCM linktable saved to {PATH}  ({len(df):,} rows)')
+    
+    
     return df

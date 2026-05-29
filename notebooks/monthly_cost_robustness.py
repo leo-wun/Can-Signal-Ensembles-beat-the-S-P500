@@ -32,6 +32,7 @@ from src.backtest import CostModel, held_weights, run_backtest, performance_metr
 from src.models.mlp_model import train_mlp
 from src.monthly_features import FEATURE_COLS as TECH_COLS
 from src.compustat_features import FUNDAMENTAL_COLS
+from src.utils import prepare
 
 
 # Set Global Variable
@@ -47,35 +48,6 @@ UNIVERSES = [
 COSTS_BPS = [0, 10, 25, 50, 100, 200]
 LASSO_CV_SAMPLE = 200_000
 
-
-def prepare(
-    df_raw,
-    side,
-    N
-
-):
-    
-    # Get full universe or bottom N
-    df = df_raw.copy()
-    if N is not None:
-        df = df.dropna(subset=["size_proxy"])
-        ascending = (side == "bottom")
-        rank = df.groupby("date")["size_proxy"].rank(method="first", ascending=ascending)
-        df = df[rank <= N]
-        
-    # Prepare fundamental features of the compustat dataset
-    for c in FUNDAMENTAL_COLS:
-        df[c] = df[c].fillna(df.groupby("date")[c].transform("median"))
-        df[c] = df[c].fillna(0.0)
-    
-    # Rank features
-    for c in FEATURES:
-        df[c] = df.groupby("date")[c].rank(pct=True) - 0.5
-        
-    # Rank target column
-    df["yrank"] = df.groupby("date")["target"].rank(pct=True)
-    
-    return df
 
 
 # Model training and prediction
@@ -102,12 +74,12 @@ def train_predict(
     idx = rng.choice(len(Xtr), size=min(LASSO_CV_SAMPLE, len(Xtr)), replace=False)
     
     # Initialize, train and predict LassoCV
-    lcv = LassoCV(cv=5, n_jobs=-1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
+    lcv = LassoCV(cv=5, n_jobs=1, max_iter=20000, random_state=0).fit(Xtr[idx], ytr[idx])
     test["pred_lasso"] = lcv.predict(Xte)
 
     # Initialize, train and predict XGboost regressor
     xgb = XGBRegressor(n_estimators=600, max_depth=5, learning_rate=0.05,
-                       subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
+                       subsample=0.8, colsample_bytree=0.8, n_jobs=1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
     xgb.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     test["pred_xgb"] = xgb.predict(Xte)
@@ -147,7 +119,7 @@ def main(
     # Training and prediction
     for name, side, N in UNIVERSES:
         print(f"\n--- universe '{name}' ---")
-        df = prepare(df_raw, side, N)
+        df = prepare(df_raw, side, N, FUNDAMENTAL_COLS, FEATURES)
         test = train_predict(df, name)
         test_idx = test.set_index(["date", "PERMNO"]).sort_index()
         returns = test_idx["target"]

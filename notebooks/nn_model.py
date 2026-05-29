@@ -63,6 +63,13 @@ def main(
     test = df[df["date"] > VAL_END].copy()
     print(f"train {len(train):,} | val {len(val):,} | test {len(test):,}")
 
+    # Free the source DataFrame (~2.5 GB on the full daily panel) before we
+    # start allocating Xtr/Xva/Xte and the XGBoost histogram. On a 16 GB Mac
+    # this is the difference between fitting in RAM and a SIGSEGV from libomp.
+    import gc
+    del df
+    gc.collect()
+
     # Target = per-date percentile rank of the next-day return
     train["yrank"] = train.groupby("date")["target"].rank(pct=True)
     val["yrank"] = val.groupby("date")["target"].rank(pct=True)
@@ -78,7 +85,7 @@ def main(
 
     # Training, evaluation and prediction with XGboost regressor
     xgb = XGBRegressor(n_estimators=600, max_depth=4, learning_rate=0.05,
-                       subsample=0.8, colsample_bytree=0.8, n_jobs=-1,
+                       subsample=0.8, colsample_bytree=0.8, n_jobs=1,
                        early_stopping_rounds=40, eval_metric="rmse", random_state=0)
     xgb.fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
     test["pred_xgb"] = xgb.predict(Xte)
@@ -169,7 +176,7 @@ def main(
     ax.set_title("Weekly L/S decile, test 2019-2024 — equity curves (test, net of costs)")
     ax.set_ylabel("equity (start = 1)")
     ax.legend()
-    out_plot = config.PLOTS_DIR / "NN_monthly_model_equity.png"
+    out_plot = config.PLOTS_DIR / "NN_daily_model_equity.png"
     fig.savefig(out_plot, dpi=120, bbox_inches="tight") 
     print(f"saved equity curves -> {out_plot}")
 

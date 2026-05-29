@@ -155,7 +155,13 @@ The features used maybe are of no use or maybe it is the more noisy nature of da
 We observe that no model perform especially better than other so the source of problem could be the way 
 we handled data.
 
-Performance on test set (net of costs) 
+
+train 13,746,339 | val 1,543,912 | test 2,566,885
+test window: 2019-01-02 -> 2024-12-31
+XGBoost best iteration: 43
+feature importance: reversal=0.78, lowvol=0.16, momentum=0.06
+
+ Performance on test set (net of costs) 
                       total_return ann_return ann_vol sharpe sharpe_gross ann_cost max_drawdown
 XGBoost ensemble            -81.5%    -24.55%  19.96%  -1.23        +3.44   80.54%       -82.9%
 Equal-weight combo          -94.0%    -37.43%  24.60%  -1.52        +0.71   62.91%       -93.8%
